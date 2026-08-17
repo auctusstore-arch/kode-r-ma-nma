@@ -1,4 +1,4 @@
-# Manual Penggunaan Auctus MA dan NMA Engine V2.2
+# Auctus MA dan NMA Engine V2.2
 
 Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memperbaiki error, membaca hasil, dan memigrasikan workbook Auctus lama.
 
