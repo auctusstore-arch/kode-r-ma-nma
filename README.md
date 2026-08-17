@@ -1,6 +1,6 @@
 # Auctus MA dan NMA Engine V2.2
 
-Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memperbaiki error, membaca hasil, dan memigrasikan workbook Auctus lama.
+Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memperbaiki error, dan membaca hasil.
 
 ## Daftar isi
 
@@ -40,11 +40,7 @@ Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memper
     - [Pelaporan software dan keputusan metode](#1310-pelaporan-software-dan-keputusan-metode)
 14. [Plot](#14-plot)
 15. [Struktur hasil](#15-struktur-hasil)
-16. [Migrasi workbook lama](#16-migrasi-workbook-lama)
-    - [Konversi manual](#161-konversi-manual)
-    - [Konversi otomatis saat run](#162-konversi-otomatis-saat-run)
-17. [Perbedaan dengan engine lama](#17-perbedaan-dengan-engine-lama)
-18. [Checklist sebelum run](#18-checklist-sebelum-run)
+16. [Checklist sebelum run](#16-checklist-sebelum-run)
 
 ## 1. Cara paling singkat menjalankan Auctus
 
@@ -670,48 +666,7 @@ hasil$analyses[["Mortality at 30 days"]]
 
 `results.xlsx` dan report HTML tidak menampilkan ID internal.
 
-## 16. Migrasi workbook lama
-
-### 16.1 Konversi manual
-
-```r
-convert_legacy_workbook(
-  file_path = "dataset_lama.xlsx",
-  output_path = "dataset_lama_v22_converted.xlsx"
-)
-```
-
-Fungsi menerima:
-
-- template V1 dengan sheet seperti `dikotomi`, `kontinyu`, `diagnostik`, atau `single_arm`;
-- template V2 lama yang masih memakai `analysis_id` dan `study_id`.
-
-File asli tidak diubah. Pada konversi V2, kolom `legacy_analysis_id` dan `legacy_study_id` dipertahankan sebagai bantuan penelusuran.
-
-### 16.2 Konversi otomatis saat run
-
-`run_auctus_meta()` mendeteksi V1, V2 berbasis ID, dan V2.2 berbasis label. V1 atau V2 lama otomatis dikonversi ke salinan schema 2.2 sebelum validasi.
-
-Jika outcome ambigu, study label tidak unik, atau metadata global konflik, analisis berhenti dan workbook koreksi menunjukkan collision. Engine tidak mengganti nama outcome dan tidak memilih metadata secara otomatis.
-
-## 17. Perbedaan dengan engine lama
-
-| Area | Engine lama | Engine V2.2 |
-|---|---|---|
-| Identitas analisis | User mengisi ID teknis atau bergantung struktur lama | User hanya mengisi `outcome_name` unik |
-| Identitas studi | User mengisi `study_id` berulang per analisis | User hanya mengisi `study_label` global |
-| Identitas arm | Dapat membutuhkan kolom atau struktur teknis | Tidak ada `arm_id` |
-| Multi-arm NMA | User dapat perlu membuat seluruh pairwise row | Satu baris per arm |
-| Metadata | Dapat diulang per outcome | Satu registry studi global |
-| Label matching | Rentan typo dan ketidakkonsistenan | Normalisasi kapitalisasi dan spasi, collision tetap diblokir |
-| Dependency | Auto-install saat runner dijalankan | Tetap auto-install saat `run_auctus_meta()` dijalankan |
-| Validasi | Pesan lebih umum | Lokasi sel, kode error, saran, contoh, dan workbook revisi |
-| Zero event | Penanganan tidak selalu eksplisit | Rare-event routing dan double-zero dicatat |
-| Forest plot | Kolom effect dapat redundant | Data arm klinis, effect natural, CI, weight, dan arah Favours |
-| Output | Lebih tersebar | Workbook, plot, HTML, manifest, dan log terstruktur |
-| Source safety | Dapat mengubah session | Source tidak mengubah working directory atau graphics device user |
-
-## 18. Checklist sebelum run
+## 16. Checklist sebelum run
 
 - [ ] Setiap `outcome_name` pada `analyses` unik.
 - [ ] Setiap `study_label` pada `study_metadata` unik secara global.
