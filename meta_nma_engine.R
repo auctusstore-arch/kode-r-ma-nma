@@ -318,7 +318,7 @@ print.auctus_dependency_check <- function(x, ...) {
   if (!length(xs)) return(.new_diagnostics())
   columns <- unique(unlist(lapply(xs, names), use.names = FALSE))
   xs <- lapply(xs, function(x) {
-    for (nm in setdiff(columns, names(x))) x[[nm]] <- NA
+    for (nm in setdiff(columns, names(x))) x[[nm]] <- rep(NA, nrow(x))
     x[, columns, drop = FALSE]
   })
   out <- do.call(rbind, xs)
