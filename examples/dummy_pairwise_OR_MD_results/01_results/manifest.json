@@ -1,0 +1,213 @@
+{
+  "engine_version": "2.3.0",
+  "schema_version": "2.3",
+  "generated_at": "2026-08-18T16:23:13+0700",
+  "input_file": "/Users/muhammadyusuf/Projects/Auctus/Code/R MA NMA/examples/dummy_pairwise_OR_MD.xlsx",
+  "input_sha256": "c5b19cc19daf09bb760d472d0f2a29f24f5f47fd38a9bb678079975c767c9ae2",
+  "run_mode": "strict",
+  "r_version": "R version 4.5.3 (2026-03-11)",
+  "platform": "aarch64-apple-darwin20",
+  "packages": {
+    "readxl": "1.4.5",
+    "openxlsx": "4.2.8.1",
+    "meta": "8.2.1",
+    "metafor": "5.0.1",
+    "netmeta": "3.3.1",
+    "mada": "0.5.12",
+    "ggplot2": "4.0.2",
+    "gridExtra": "2.3",
+    "jsonlite": "2.0.0",
+    "digest": "0.6.39",
+    "zip": "3.0.2",
+    "estmeansd": "1.0.1"
+  },
+  "id_mappings": {
+    "analyses": [
+      {
+        "internal_id": "a_a0bb140b77f2",
+        "label": "30-day mortality"
+      },
+      {
+        "internal_id": "a_fe6bb66a5f0f",
+        "label": "Systolic blood pressure at 12 weeks"
+      }
+    ],
+    "studies": [
+      {
+        "internal_id": "s_c247d089867a",
+        "label": "Anderson 2018"
+      },
+      {
+        "internal_id": "s_bb56c89691f8",
+        "label": "Budi 2019"
+      },
+      {
+        "internal_id": "s_f92d2b3ceb89",
+        "label": "Chen 2020"
+      },
+      {
+        "internal_id": "s_3704964ffe92",
+        "label": "Davis 2021"
+      },
+      {
+        "internal_id": "s_8dbfbaf55825",
+        "label": "Evans 2022"
+      },
+      {
+        "internal_id": "s_71c510bfc17b",
+        "label": "Fauzi 2022"
+      },
+      {
+        "internal_id": "s_005092dabd97",
+        "label": "Garcia 2023"
+      },
+      {
+        "internal_id": "s_1e3fc467e8ed",
+        "label": "Hassan 2024"
+      },
+      {
+        "internal_id": "s_ad22858c2cf9",
+        "label": "Ibrahim 2024"
+      },
+      {
+        "internal_id": "s_e341b18c78c3",
+        "label": "Kim 2025"
+      },
+      {
+        "internal_id": "s_232819e876a8",
+        "label": "Lopez 2025"
+      },
+      {
+        "internal_id": "s_ab4d6c96024e",
+        "label": "Morgan 2026"
+      },
+      {
+        "internal_id": "s_783d39626a0c",
+        "label": "Ito 2017"
+      },
+      {
+        "internal_id": "s_fef7d677906a",
+        "label": "Jones 2018"
+      },
+      {
+        "internal_id": "s_ae8f7c8b2ca8",
+        "label": "Kumar 2019"
+      },
+      {
+        "internal_id": "s_01bb8e03becc",
+        "label": "Lim 2020"
+      },
+      {
+        "internal_id": "s_96242697847b",
+        "label": "Miller 2021"
+      },
+      {
+        "internal_id": "s_856887631d66",
+        "label": "Nugroho 2022"
+      },
+      {
+        "internal_id": "s_ce9ebafb4f3c",
+        "label": "Oliveira 2023"
+      },
+      {
+        "internal_id": "s_57a34d4a82af",
+        "label": "Patel 2024"
+      },
+      {
+        "internal_id": "s_2e9e2d59d16e",
+        "label": "Quinn 2024"
+      },
+      {
+        "internal_id": "s_d153053fd808",
+        "label": "Rahman 2025"
+      },
+      {
+        "internal_id": "s_0182108bcebd",
+        "label": "Silva 2025"
+      },
+      {
+        "internal_id": "s_47ab6cd47ef6",
+        "label": "Tan 2026"
+      }
+    ]
+  },
+  "analyses": {
+    "30-day mortality": {
+      "analysis_id": "a_a0bb140b77f2",
+      "outcome_name": "30-day mortality",
+      "status": "SUCCESS",
+      "analysis_type": "pairwise_ma",
+      "forest_mode": "raw_atomic",
+      "configuration": {
+        "outcome_name": "30-day mortality",
+        "analysis_type": "pairwise_ma",
+        "timepoint": null,
+        "outcome_type": "binary",
+        "effect_measure": "OR",
+        "reference_treatment": "Standard care",
+        "outcome_direction": "lower_better",
+        "unit": null,
+        "notes": "Dummy example: event/sample data for a pairwise odds-ratio meta-analysis.",
+        "source_sheet": "analyses",
+        "source_row": 2,
+        "outcome_key": "30-day mortality",
+        "analysis_id": "a_a0bb140b77f2"
+      },
+      "method_decisions": [
+        {
+          "analysis_id": "a_a0bb140b77f2",
+          "decision": "binary_method",
+          "value": "MH",
+          "reason": "Non-sparse raw binary data"
+        },
+        {
+          "analysis_id": "a_a0bb140b77f2",
+          "decision": "forest_mode",
+          "value": "raw_atomic",
+          "reason": "All selected primary estimates are raw-derived."
+        }
+      ]
+    },
+    "Systolic blood pressure at 12 weeks": {
+      "analysis_id": "a_fe6bb66a5f0f",
+      "outcome_name": "Systolic blood pressure at 12 weeks",
+      "status": "SUCCESS",
+      "analysis_type": "pairwise_ma",
+      "forest_mode": "raw_atomic",
+      "configuration": {
+        "outcome_name": "Systolic blood pressure at 12 weeks",
+        "analysis_type": "pairwise_ma",
+        "timepoint": null,
+        "outcome_type": "continuous",
+        "effect_measure": "MD",
+        "reference_treatment": "Standard care",
+        "outcome_direction": "lower_better",
+        "unit": "mmHg",
+        "notes": "Dummy example: mean, SD, and sample data for a pairwise mean-difference meta-analysis.",
+        "source_sheet": "analyses",
+        "source_row": 3,
+        "outcome_key": "systolic blood pressure at 12 weeks",
+        "analysis_id": "a_fe6bb66a5f0f"
+      },
+      "method_decisions": [
+        {
+          "analysis_id": "a_fe6bb66a5f0f",
+          "decision": "primary_method",
+          "value": "metagen_REML_HK",
+          "reason": "Continuous canonical effects"
+        },
+        {
+          "analysis_id": "a_fe6bb66a5f0f",
+          "decision": "forest_mode",
+          "value": "raw_atomic",
+          "reason": "All selected primary estimates are raw-derived."
+        }
+      ]
+    }
+  },
+  "diagnostics": {
+    "errors": 0,
+    "warnings": 0,
+    "info": 0
+  }
+}

@@ -1,5 +1,5 @@
 # =============================================================================
-# AUCTUS META-ANALYSIS & NETWORK META-ANALYSIS ENGINE V2.2
+# AUCTUS META-ANALYSIS & NETWORK META-ANALYSIS ENGINE V2.3
 # =============================================================================
 # Public workflow:
 #   source("meta_nma_engine.R")
@@ -16,8 +16,8 @@
 
 local({
 
-.AUCTUS_ENGINE_VERSION <- "2.2.0"
-.AUCTUS_SCHEMA_VERSION <- "2.2"
+  .AUCTUS_ENGINE_VERSION <- "2.3.0"
+.AUCTUS_SCHEMA_VERSION <- "2.3"
 
 .auctus_packages <- c(
   readxl = "1.4.0",
@@ -119,7 +119,7 @@ local({
 }
 
 .ensure_columns <- function(dat, columns, value = NA) {
-  for (nm in setdiff(columns, names(dat))) dat[[nm]] <- value
+  for (nm in setdiff(columns, names(dat))) dat[[nm]] <- rep(value, nrow(dat))
   dat
 }
 
@@ -328,23 +328,23 @@ print.auctus_dependency_check <- function(x, ...) {
 
 .sheet_specs <- list(
   analyses = c(
-    "outcome_name", "include", "analysis_type", "timepoint",
+    "outcome_name", "analysis_type", "timepoint",
     "outcome_type", "effect_measure", "reference_treatment",
     "outcome_direction", "unit", "notes"
   ),
   study_metadata = c("study_label", "year", "study_design"),
   arm_data = c(
     "outcome_name", "study_label", "treatment", "event", "sample",
-    "mean", "sd", "median", "q1", "q3", "min", "max", "include", "notes"
+    "mean", "sd", "median", "q1", "q3", "min", "max", "notes"
   ),
   effect_data = c(
     "outcome_name", "study_label", "treat1", "treat2", "effect", "ci_low",
     "ci_high", "se", "ci_level", "estimate_type", "adjustment_variables",
-    "sample1", "sample2", "include", "notes"
+    "sample1", "sample2", "notes"
   ),
   diagnostic_data = c(
     "outcome_name", "study_label", "tp", "fp", "fn", "tn", "threshold",
-    "include", "notes"
+    "notes"
   )
 )
 
@@ -353,7 +353,7 @@ print.auctus_dependency_check <- function(x, ...) {
   names(dat) <- .clean_names(names(dat))
   dat <- as.data.frame(dat, stringsAsFactors = FALSE)
   dat <- .ensure_columns(dat, expected)
-  dat$source_sheet <- sheet
+  dat$source_sheet <- rep(sheet, nrow(dat))
   dat$source_row <- seq_len(nrow(dat)) + 1L
   non_provenance <- setdiff(names(dat), c("source_sheet", "source_row"))
   if (length(non_provenance)) {
@@ -482,7 +482,7 @@ print.auctus_dependency_check <- function(x, ...) {
         diag, "ERROR", "E001_MISSING_COLUMN", sheet_label,
         column = col,
         message = sprintf("Kolom wajib '%s' tidak ditemukan.", col),
-        suggestion = "Gunakan template V2.2 atau tambahkan kolom dengan nama yang persis sama.",
+        suggestion = "Gunakan template V2.3 atau tambahkan kolom dengan nama yang persis sama.",
         example = col
       )
       next
@@ -579,7 +579,7 @@ print.auctus_dependency_check <- function(x, ...) {
       diag <- .add_diag(
         diag, "ERROR", "E003_MISSING_SHEET", sheet = sheet,
         message = sprintf("Sheet wajib '%s' tidak ditemukan.", sheet),
-        suggestion = "Gunakan template V2.2. Jangan mengganti nama sheet input.",
+        suggestion = "Gunakan template V2.3. Jangan mengganti nama sheet input.",
         example = sheet
       )
     }
@@ -610,7 +610,6 @@ print.auctus_dependency_check <- function(x, ...) {
   analyses$outcome_type <- tolower(.trim_chr(analyses$outcome_type))
   analyses$effect_measure <- toupper(.trim_chr(analyses$effect_measure))
   analyses$reference_treatment <- .trim_chr(analyses$reference_treatment)
-  analyses$include_flag <- .is_yes(analyses$include)
 
   duplicate_outcome <- which(!is.na(analyses$outcome_key) & duplicated(analyses$outcome_key))
   for (i in duplicate_outcome) {
@@ -623,7 +622,6 @@ print.auctus_dependency_check <- function(x, ...) {
 
   valid_effects <- list(binary = c("OR", "RR", "HR"), continuous = c("MD", "SMD"))
   for (i in seq_len(nrow(analyses))) {
-    if (!analyses$include_flag[[i]]) next
     type <- analyses$outcome_type[[i]]
     atype <- analyses$analysis_type[[i]]
     em <- analyses$effect_measure[[i]]
@@ -667,13 +665,13 @@ print.auctus_dependency_check <- function(x, ...) {
     }
   }
 
-  included_ids <- unique(analyses$analysis_id[analyses$include_flag & !is.na(analyses$analysis_id)])
-  if (!length(included_ids)) {
+  analysis_ids <- unique(analyses$analysis_id[!is.na(analyses$analysis_id)])
+  if (!length(analysis_ids)) {
     diag <- .add_diag(
-      diag, "ERROR", "E300_NO_INCLUDED_ANALYSIS", sheet = "analyses",
-      message = "Tidak ada analysis dengan include=TRUE.",
-      suggestion = "Isi data, lalu ubah include menjadi TRUE pada analysis yang akan dijalankan.",
-      example = "TRUE"
+      diag, "ERROR", "E300_NO_ANALYSIS", sheet = "analyses",
+      message = "Sheet analyses belum berisi outcome yang akan dianalisis.",
+      suggestion = "Tambahkan satu baris outcome lengkap pada sheet analyses.",
+      example = "Mortality at 30 days"
     )
   }
   for (sheet_name in c("arm_data", "effect_data", "diagnostic_data")) {
@@ -741,8 +739,7 @@ print.auctus_dependency_check <- function(x, ...) {
   arms$analysis_id <- .trim_chr(arms$analysis_id)
   arms$study_id <- .trim_chr(arms$study_id)
   arms$treatment <- .trim_chr(arms$treatment)
-  arms$include_flag <- .is_yes(arms$include)
-  active_arms <- which(arms$include_flag)
+  active_arms <- seq_len(nrow(arms))
   for (i in active_arms) {
     required_arm <- c("outcome_name", "study_label", "treatment")
     for (col in required_arm) {
@@ -785,7 +782,7 @@ print.auctus_dependency_check <- function(x, ...) {
     arms$analysis_id, arms$study_id, .treatment_key(arms$treatment), sep = "||"
   )
   dup_treatment_arm <- which(
-    arms$include_flag & !is.na(arms$analysis_id) & !is.na(arms$study_id) &
+    !is.na(arms$analysis_id) & !is.na(arms$study_id) &
       duplicated(treatment_arm_key) & !is.na(arms$treatment)
   )
   for (i in dup_treatment_arm) {
@@ -802,8 +799,7 @@ print.auctus_dependency_check <- function(x, ...) {
   effects$treat1 <- .trim_chr(effects$treat1)
   effects$treat2 <- .trim_chr(effects$treat2)
   effects$estimate_type <- tolower(.trim_chr(effects$estimate_type))
-  effects$include_flag <- .is_yes(effects$include)
-  active_effects <- which(effects$include_flag)
+  active_effects <- seq_len(nrow(effects))
   for (i in active_effects) {
     for (col in c("outcome_name", "study_label", "treat1", "treat2", "effect", "estimate_type")) {
       if (is.na(.trim_chr(effects[[col]][[i]]))) {
@@ -888,7 +884,7 @@ print.auctus_dependency_check <- function(x, ...) {
     effects$estimate_type, sep = "||"
   )
   dup_effect <- which(
-    effects$include_flag & !is.na(effects$analysis_id) & !is.na(effects$study_id) &
+    !is.na(effects$analysis_id) & !is.na(effects$study_id) &
       duplicated(pair_key)
   )
   for (i in dup_effect) {
@@ -945,8 +941,7 @@ print.auctus_dependency_check <- function(x, ...) {
 
   dta$analysis_id <- .trim_chr(dta$analysis_id)
   dta$study_id <- .trim_chr(dta$study_id)
-  dta$include_flag <- .is_yes(dta$include)
-  active_dta <- which(dta$include_flag)
+  active_dta <- seq_len(nrow(dta))
   for (i in active_dta) {
     for (col in c("outcome_name", "study_label", "tp", "fp", "fn", "tn")) {
       if (is.na(.trim_chr(dta[[col]][[i]]))) {
@@ -961,14 +956,14 @@ print.auctus_dependency_check <- function(x, ...) {
     }
   }
 
-  for (aid in included_ids) {
+  for (aid in analysis_ids) {
     ai <- match(aid, analyses$analysis_id)
     atype <- analyses$analysis_type[[ai]]
     otype <- analyses$outcome_type[[ai]]
     ref <- analyses$reference_treatment[[ai]]
-    aa <- arms[arms$include_flag & !is.na(arms$analysis_id) & arms$analysis_id == aid, , drop = FALSE]
-    ee <- effects[effects$include_flag & !is.na(effects$analysis_id) & effects$analysis_id == aid, , drop = FALSE]
-    dd <- dta[dta$include_flag & !is.na(dta$analysis_id) & dta$analysis_id == aid, , drop = FALSE]
+    aa <- arms[!is.na(arms$analysis_id) & arms$analysis_id == aid, , drop = FALSE]
+    ee <- effects[!is.na(effects$analysis_id) & effects$analysis_id == aid, , drop = FALSE]
+    dd <- dta[!is.na(dta$analysis_id) & dta$analysis_id == aid, , drop = FALSE]
 
     if (nrow(aa)) {
       for (arm_i in seq_len(nrow(aa))) {
@@ -1052,7 +1047,7 @@ print.auctus_dependency_check <- function(x, ...) {
         diag, "ERROR", "E301_INSUFFICIENT_STUDIES", sheet = "diagnostic_data",
         analysis_id = aid,
         message = "Meta-analisis diagnostik membutuhkan minimal dua studi valid.",
-        suggestion = "Tambahkan studi atau ubah include menjadi FALSE untuk analysis ini."
+        suggestion = "Tambahkan minimal dua studi lengkap atau hapus outcome ini dari sheet analyses."
       )
       next
     }
@@ -1206,7 +1201,6 @@ print.auctus_dependency_check <- function(x, ...) {
 .auctus_example_data <- function() {
   list(
     analyses = data.frame(
-      include = c(FALSE, FALSE, FALSE, FALSE),
       analysis_type = c("pairwise_ma", "nma", "proportion_ma", "diagnostic_ma"),
       outcome_name = c(
         "Mortality at 30 days", "Clinical response at end of treatment",
@@ -1219,7 +1213,7 @@ print.auctus_dependency_check <- function(x, ...) {
       outcome_direction = c("lower_better", "higher_better", "neutral", "neutral"),
       unit = c(NA, NA, "%", NA),
       notes = c(
-        "Contoh saja. Ganti include menjadi TRUE setelah data lengkap.",
+        "Contoh pairwise binary raw dan reported effect.",
         "Studi multi-arm tetap satu baris per arm.",
         "Proportion menerima event 0 dan event sama dengan sample.",
         "Diagnostic membutuhkan TP, FP, FN, dan TN."
@@ -1258,7 +1252,6 @@ print.auctus_dependency_check <- function(x, ...) {
       event = c(8, 15, 0, 7, 22, 17, 31, 18, 13, 26, 0, 24),
       sample = c(100, 100, 80, 82, 120, 118, 122, 105, 103, 108, 150, 180),
       mean = NA, sd = NA, median = NA, q1 = NA, q3 = NA, min = NA, max = NA,
-      include = FALSE,
       notes = "Contoh",
       stringsAsFactors = FALSE
     ),
@@ -1276,7 +1269,6 @@ print.auctus_dependency_check <- function(x, ...) {
       adjustment_variables = "Age; sex; baseline risk",
       sample1 = 95,
       sample2 = 96,
-      include = FALSE,
       notes = "Contoh reported adjusted OR",
       stringsAsFactors = FALSE
     ),
@@ -1285,10 +1277,26 @@ print.auctus_dependency_check <- function(x, ...) {
       study_label = c("DTA Smith 2023", "DTA Lee 2024"),
       tp = c(82, 74), fp = c(12, 9), fn = c(18, 16), tn = c(188, 201),
       threshold = c("10 ng/mL", "10 ng/mL"),
-      include = FALSE,
       notes = "Contoh diagnostic 2x2",
       stringsAsFactors = FALSE
     )
+  )
+}
+
+.auctus_template_input_data <- function() {
+  blank <- function(columns, extras = character()) {
+    values <- setNames(rep(list(NA_character_), length(c(columns, extras))), c(columns, extras))
+    as.data.frame(values, stringsAsFactors = FALSE)
+  }
+  list(
+    analyses = blank(.sheet_specs$analyses),
+    study_metadata = blank(
+      .sheet_specs$study_metadata,
+      c("subgroup_region", "moderator_num_mean_age")
+    ),
+    arm_data = blank(.sheet_specs$arm_data),
+    effect_data = blank(.sheet_specs$effect_data),
+    diagnostic_data = blank(.sheet_specs$diagnostic_data)
   )
 }
 
@@ -1297,7 +1305,9 @@ print.auctus_dependency_check <- function(x, ...) {
     Bagian = c(
       "Mulai", "Langkah 1", "Langkah 2", "Langkah 3", "Kunci outcome",
       "Kunci studi", "Studi multi-arm", "Zero event", "Reported effect", "Warna biru",
-      "Warna merah", "Warna kuning", "Warna biru muda", "Bantuan"
+      "Semua baris aktif", "Mengecualikan data", "Warna merah", "Warna kuning",
+      "Warna biru muda", "Contoh", "Forest raw", "Forest reported/mixed",
+      "Arah Favours", "Bantuan"
     ),
     Penjelasan = c(
       paste0("Template Auctus MA dan NMA V", .AUCTUS_SCHEMA_VERSION),
@@ -1313,9 +1323,21 @@ print.auctus_dependency_check <- function(x, ...) {
       "event boleh 0. sample harus lebih besar dari 0.",
       "Masukkan OR/RR/HR pada skala natural dan isi CI atau SE.",
       "Sel input user menggunakan font biru.",
+      "Setiap baris yang mulai diisi dianggap aktif dan wajib lengkap.",
+      "Hapus baris outcome atau data dari salinan workbook bila tidak ingin dianalisis.",
       "Sel merah pada validated_input.xlsx wajib diperbaiki.",
       "Sel kuning adalah warning yang harus dibaca sebelum interpretasi.",
       "Sel biru muda adalah informasi tentang keputusan atau eksklusi yang tidak memblokir analisis.",
+      "Lihat CONTOH_PENGISIAN. Sheet read-only tersebut tidak dibaca engine; salin pola ke sheet input.",
+      "Binary menampilkan Event dan Total per treatment. Continuous menampilkan Mean, SD, dan Total.",
+      paste0(
+        "Forest reported atau mixed hanya menampilkan Total per treatment dan membagi studi menjadi ",
+        "blok Adjusted, Crude, dan Raw-derived. Sample yang tidak dilaporkan tampil sebagai NR."
+      ),
+      paste0(
+        "Nama treatment pada header dan label Favours dibuat dinamis. lower_better, higher_better, ",
+        "atau neutral harus dipilih berdasarkan arti klinis outcome."
+      ),
       "Jalankan source('meta_nma_engine.R'), lalu hasil <- run_auctus_meta()."
     ),
     stringsAsFactors = FALSE
@@ -1328,8 +1350,7 @@ print.auctus_dependency_check <- function(x, ...) {
     outcome_type = c("binary", "continuous", "proportion", "mean", "diagnostic"),
     effect_measure = c("OR", "RR", "HR", "MD", "SMD"),
     outcome_direction = c("lower_better", "higher_better", "neutral"),
-    estimate_type = c("adjusted", "crude"),
-    include = c("TRUE", "FALSE")
+    estimate_type = c("adjusted", "crude")
   )
 }
 
@@ -1384,7 +1405,8 @@ print.auctus_dependency_check <- function(x, ...) {
   invisible(path)
 }
 
-.write_auctus_workbook <- function(data, output_path, include_instructions = TRUE) {
+.write_auctus_workbook <- function(data, output_path, write_instructions = TRUE,
+                                   example_data = NULL, migration_log = NULL) {
   .require_namespace("openxlsx")
   output_path <- .absolute_path(output_path)
   dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
@@ -1411,9 +1433,9 @@ print.auctus_dependency_check <- function(x, ...) {
     valign = "top", wrapText = TRUE
   )
 
-  if (include_instructions) {
+  if (write_instructions) {
     openxlsx::addWorksheet(wb, "PETUNJUK", gridLines = FALSE, tabColour = navy)
-    openxlsx::writeData(wb, "PETUNJUK", "AUCTUS V2.2", startRow = 1, startCol = 1)
+    openxlsx::writeData(wb, "PETUNJUK", "AUCTUS V2.3", startRow = 1, startCol = 1)
     openxlsx::addStyle(wb, "PETUNJUK", title_style, rows = 1, cols = 1)
     openxlsx::writeData(wb, "PETUNJUK", paste("Schema version", .AUCTUS_SCHEMA_VERSION), startRow = 2, startCol = 1)
     instructions <- .auctus_instructions()
@@ -1425,6 +1447,51 @@ print.auctus_dependency_check <- function(x, ...) {
     openxlsx::setColWidths(wb, "PETUNJUK", cols = 2, widths = 95)
     openxlsx::setRowHeights(wb, "PETUNJUK", rows = 5:(4 + nrow(instructions)), heights = 34)
     openxlsx::freezePane(wb, "PETUNJUK", firstActiveRow = 5)
+  }
+
+  if (!is.null(example_data)) {
+    openxlsx::addWorksheet(wb, "CONTOH_PENGISIAN", gridLines = FALSE, tabColour = "#70AD47")
+    openxlsx::writeData(wb, "CONTOH_PENGISIAN", "CONTOH PENGISIAN, TIDAK DIBACA ENGINE",
+                        startRow = 1, startCol = 1)
+    openxlsx::addStyle(wb, "CONTOH_PENGISIAN", title_style, rows = 1, cols = 1)
+    row <- 3L
+    for (sheet in names(.sheet_specs)) {
+      dat <- example_data[[sheet]] %||% .empty_df(.sheet_specs[[sheet]])
+      dat <- .ensure_columns(dat, .sheet_specs[[sheet]])
+      dat <- dat[, c(.sheet_specs[[sheet]], setdiff(names(dat), .sheet_specs[[sheet]])), drop = FALSE]
+      openxlsx::writeData(wb, "CONTOH_PENGISIAN", paste0("Contoh sheet: ", sheet),
+                          startRow = row, startCol = 1)
+      openxlsx::addStyle(wb, "CONTOH_PENGISIAN", section_style, rows = row,
+                         cols = seq_len(max(1L, ncol(dat))), gridExpand = TRUE)
+      row <- row + 1L
+      openxlsx::writeDataTable(
+        wb, "CONTOH_PENGISIAN", dat, startRow = row, startCol = 1,
+        tableStyle = "TableStyleMedium4", withFilter = FALSE,
+        tableName = paste0("tbl_example_", sheet)
+      )
+      openxlsx::addStyle(wb, "CONTOH_PENGISIAN", header_style, rows = row,
+                         cols = seq_len(ncol(dat)), gridExpand = TRUE, stack = TRUE)
+      if (nrow(dat)) {
+        openxlsx::addStyle(wb, "CONTOH_PENGISIAN", body_style,
+                           rows = (row + 1L):(row + nrow(dat)), cols = seq_len(ncol(dat)),
+                           gridExpand = TRUE, stack = TRUE)
+      }
+      row <- row + nrow(dat) + 3L
+    }
+    openxlsx::freezePane(wb, "CONTOH_PENGISIAN", firstActiveRow = 3)
+    openxlsx::setColWidths(wb, "CONTOH_PENGISIAN", cols = 1:20, widths = 16)
+    openxlsx::setColWidths(wb, "CONTOH_PENGISIAN", cols = 1:2, widths = 28)
+    openxlsx::protectWorksheet(wb, "CONTOH_PENGISIAN", protect = TRUE,
+                               password = "auctus", lockInsertingRows = TRUE,
+                               lockDeletingRows = TRUE)
+  }
+
+  if (!is.null(migration_log) && nrow(migration_log)) {
+    openxlsx::addWorksheet(wb, "MIGRATION_LOG", gridLines = FALSE, tabColour = pale_yellow)
+    openxlsx::writeDataTable(wb, "MIGRATION_LOG", migration_log,
+                             tableStyle = "TableStyleMedium4", withFilter = TRUE)
+    openxlsx::freezePane(wb, "MIGRATION_LOG", firstActiveRow = 2)
+    openxlsx::setColWidths(wb, "MIGRATION_LOG", cols = seq_len(ncol(migration_log)), widths = "auto")
   }
 
   for (sheet in names(.sheet_specs)) {
@@ -1483,12 +1550,12 @@ print.auctus_dependency_check <- function(x, ...) {
 
   dv_map <- list(
     analyses = list(
-      include = "include", analysis_type = "analysis_type", outcome_type = "outcome_type",
+      analysis_type = "analysis_type", outcome_type = "outcome_type",
       effect_measure = "effect_measure", outcome_direction = "outcome_direction"
     ),
-    arm_data = list(include = "include"),
-    effect_data = list(include = "include", estimate_type = "estimate_type"),
-    diagnostic_data = list(include = "include")
+    arm_data = list(),
+    effect_data = list(estimate_type = "estimate_type"),
+    diagnostic_data = list()
   )
   for (sheet in names(dv_map)) {
     dat <- data[[sheet]] %||% .empty_df(.sheet_specs[[sheet]])
@@ -1535,7 +1602,6 @@ print.auctus_dependency_check <- function(x, ...) {
       "Nama studi sekaligus kunci global. Wajib unik pada study_metadata dan dipilih dari dropdown ",
       "pada sheet data. Engine membuat study_id internal secara otomatis."
     ),
-    include = "TRUE untuk dianalisis, FALSE untuk contoh atau baris yang belum siap.",
     timepoint = "Opsional. Boleh dikosongkan. Jika perlu, waktu dapat ditulis pada outcome_name.",
     treatment = paste0(
       "Nama treatment sekaligus identitas arm dalam studi. ",
@@ -1572,8 +1638,11 @@ print.auctus_dependency_check <- function(x, ...) {
 }
 
 create_auctus_template <- function(output_path = "template dataset MA & NMA.xlsx") {
-  path <- .write_auctus_workbook(.auctus_example_data(), output_path, include_instructions = TRUE)
-  message("Template Auctus V2.2 dibuat: ", path)
+  path <- .write_auctus_workbook(
+    .auctus_template_input_data(), output_path, write_instructions = TRUE,
+    example_data = .auctus_example_data()
+  )
+  message("Template Auctus V2.3 dibuat: ", path)
   invisible(path)
 }
 
@@ -1763,7 +1832,15 @@ print.auctus_validation <- function(x, ...) {
   headers <- .clean_names(names(readxl::read_excel(
     file_path, sheet = analysis_sheet, n_max = 0
   )))
-  if ("analysis_id" %in% headers) "v2_id" else if ("outcome_name" %in% headers) "v22_label" else "unknown"
+  if ("analysis_id" %in% headers) {
+    "v2_id"
+  } else if ("outcome_name" %in% headers && "include" %in% headers) {
+    "v22_label"
+  } else if ("outcome_name" %in% headers) {
+    "v23_label"
+  } else {
+    "unknown"
+  }
 }
 
 .legacy_v2_specs <- list(
@@ -1905,6 +1982,7 @@ print.auctus_validation <- function(x, ...) {
   if (!length(recognized)) stop("Workbook bukan template V1 yang dikenali.", call. = FALSE)
 
   out <- lapply(.sheet_specs, function(cols) .empty_df(cols))
+  migration_rows <- list()
   add_metadata <- function(label, dat, i) {
     base <- data.frame(
       study_label = label,
@@ -1921,6 +1999,13 @@ print.auctus_validation <- function(x, ...) {
     dat <- readxl::read_excel(file_path, sheet = sheets[[key]], col_types = "text")
     names(dat) <- .clean_names(names(dat))
     dat <- as.data.frame(dat, stringsAsFactors = FALSE)
+    keep <- if ("include" %in% names(dat)) .is_yes(dat$include) else rep(TRUE, nrow(dat))
+    migration_rows[[length(migration_rows) + 1L]] <- .migration_log_row(
+      "v1", key, sum(!keep),
+      "Baris include=FALSE dibuang saat migrasi ke V2.3."
+    )
+    dat <- dat[keep, , drop = FALSE]
+    if ("include" %in% names(dat)) dat$include <- NULL
     if (!nrow(dat)) next
     study <- .trim_chr(.legacy_value(dat, c("study", "studlab", "author")))
     outcome <- .trim_chr(.legacy_value(dat, c("outcome_name", "outcome")))
@@ -1943,7 +2028,7 @@ print.auctus_validation <- function(x, ...) {
         ))
         direction <- if (old_direction == "undesirable") "higher_better" else "lower_better"
         out$analyses <- rbind(out$analyses, data.frame(
-          outcome_name = outcome[idx[[1L]]], include = TRUE, analysis_type = atype,
+          outcome_name = outcome[idx[[1L]]], analysis_type = atype,
           timepoint = timepoint[idx[[1L]]], outcome_type = otype,
           effect_measure = effect[idx[[1L]]], reference_treatment = ref,
           outcome_direction = direction, unit = NA,
@@ -1975,7 +2060,7 @@ print.auctus_validation <- function(x, ...) {
             sample = c(n1, n2), mean = if (otype == "continuous") c(m1, m2) else NA,
             sd = if (otype == "continuous") c(sd1, sd2) else NA,
             median = NA, q1 = NA, q3 = NA, min = NA, max = NA,
-            include = TRUE, notes = "Dikonversi dari V1", stringsAsFactors = FALSE
+            notes = "Dikonversi dari V1", stringsAsFactors = FALSE
           ))
         } else {
           val <- if (otype == "binary") {
@@ -1990,7 +2075,7 @@ print.auctus_validation <- function(x, ...) {
             ci_high = .legacy_value(dat, c("highci", "ci_high", "upper"))[[i]],
             se = .legacy_value(dat, c("se", "sete"))[[i]], ci_level = 95,
             estimate_type = "crude", adjustment_variables = NA,
-            sample1 = n1, sample2 = n2, include = TRUE,
+            sample1 = n1, sample2 = n2,
             notes = "Dikonversi dari V1. Periksa skala effect.", stringsAsFactors = FALSE
           ))
         }
@@ -2000,7 +2085,7 @@ print.auctus_validation <- function(x, ...) {
       for (grp in unique(group[!is.na(group)])) {
         i <- which(group == grp)[[1L]]
         out$analyses <- rbind(out$analyses, data.frame(
-          outcome_name = outcome[[i]], include = TRUE, analysis_type = "diagnostic_ma",
+          outcome_name = outcome[[i]], analysis_type = "diagnostic_ma",
           timepoint = timepoint[[i]], outcome_type = "diagnostic", effect_measure = NA,
           reference_treatment = NA, outcome_direction = "neutral", unit = NA,
           notes = "Dikonversi dari V1", stringsAsFactors = FALSE
@@ -2013,7 +2098,7 @@ print.auctus_validation <- function(x, ...) {
           tp = .legacy_value(dat, "tp")[[i]], fp = .legacy_value(dat, "fp")[[i]],
           fn = .legacy_value(dat, "fn")[[i]], tn = .legacy_value(dat, "tn")[[i]],
           threshold = .legacy_value(dat, c("threshold", "cutoff"))[[i]],
-          include = TRUE, notes = "Dikonversi dari V1", stringsAsFactors = FALSE
+          notes = "Dikonversi dari V1", stringsAsFactors = FALSE
         ))
       }
     } else if (key == "single_arm") {
@@ -2023,7 +2108,7 @@ print.auctus_validation <- function(x, ...) {
       for (grp in unique(group[!is.na(group)])) {
         i <- which(group == grp)[[1L]]
         out$analyses <- rbind(out$analyses, data.frame(
-          outcome_name = outcome[[i]], include = TRUE, analysis_type = "proportion_ma",
+          outcome_name = outcome[[i]], analysis_type = "proportion_ma",
           timepoint = timepoint[[i]], outcome_type = raw_type[[i]], effect_measure = NA,
           reference_treatment = NA, outcome_direction = "neutral",
           unit = if (raw_type[[i]] == "proportion") "%" else .legacy_value(dat, "unit")[[i]],
@@ -2039,7 +2124,7 @@ print.auctus_validation <- function(x, ...) {
           mean = .legacy_value(dat, "mean")[[i]], sd = .legacy_value(dat, "sd")[[i]],
           median = .legacy_value(dat, "median")[[i]], q1 = .legacy_value(dat, "q1")[[i]],
           q3 = .legacy_value(dat, "q3")[[i]], min = .legacy_value(dat, "min")[[i]],
-          max = .legacy_value(dat, "max")[[i]], include = TRUE,
+          max = .legacy_value(dat, "max")[[i]],
           notes = "Dikonversi dari V1", stringsAsFactors = FALSE
         ))
       }
@@ -2069,7 +2154,114 @@ print.auctus_validation <- function(x, ...) {
     }
     out$arm_data <- out$arm_data[keep, , drop = FALSE]
   }
+  attr(out, "migration_log") <- .rbind_fill(migration_rows)
   out
+}
+
+.read_legacy_label_tables <- function(file_path) {
+  wb <- .read_auctus_workbook(file_path)
+  if (length(wb$missing_sheets)) {
+    stop("Workbook label lama tidak memiliki seluruh sheet wajib.", call. = FALSE)
+  }
+  setNames(lapply(names(.sheet_specs), function(sheet) wb[[sheet]]), names(.sheet_specs))
+}
+
+.migration_log_row <- function(source_schema, sheet, removed_rows, reason) {
+  data.frame(
+    source_schema = source_schema,
+    sheet = sheet,
+    removed_rows = as.integer(removed_rows),
+    reason = reason,
+    stringsAsFactors = FALSE
+  )
+}
+
+.filter_legacy_includes <- function(data, source_schema) {
+  analyses <- data$analyses
+  analysis_key_column <- if ("analysis_id" %in% names(analyses)) "analysis_id" else "outcome_name"
+  analysis_key <- if (analysis_key_column == "analysis_id") {
+    .trim_chr(analyses[[analysis_key_column]])
+  } else {
+    .normalize_label_key(analyses[[analysis_key_column]])
+  }
+  analysis_keep <- if ("include" %in% names(analyses)) .is_yes(analyses$include) else rep(TRUE, nrow(analyses))
+  retained_keys <- unique(analysis_key[analysis_keep & !is.na(analysis_key)])
+  logs <- list(.migration_log_row(
+    source_schema, "analyses", sum(!analysis_keep),
+    "Baris include=FALSE dibuang saat migrasi ke V2.3."
+  ))
+  analyses <- analyses[analysis_keep, , drop = FALSE]
+  analyses$include <- NULL
+  data$analyses <- analyses
+
+  for (sheet in c("arm_data", "effect_data", "diagnostic_data")) {
+    dat <- data[[sheet]]
+    row_keep <- if ("include" %in% names(dat)) .is_yes(dat$include) else rep(TRUE, nrow(dat))
+    row_key <- if (analysis_key_column == "analysis_id") {
+      .trim_chr(dat$analysis_id)
+    } else {
+      .normalize_label_key(dat$outcome_name)
+    }
+    parent_keep <- !is.na(row_key) & row_key %in% retained_keys
+    logs[[length(logs) + 1L]] <- .migration_log_row(
+      source_schema, sheet, sum(!row_keep),
+      "Baris include=FALSE dibuang saat migrasi ke V2.3."
+    )
+    logs[[length(logs) + 1L]] <- .migration_log_row(
+      source_schema, sheet, sum(row_keep & !parent_keep),
+      "Baris untuk outcome yang tidak dipertahankan dibuang."
+    )
+    dat <- dat[row_keep & parent_keep, , drop = FALSE]
+    dat$include <- NULL
+    data[[sheet]] <- dat
+  }
+
+  if (analysis_key_column == "analysis_id" && "analysis_id" %in% names(data$study_metadata)) {
+    meta_key <- .trim_chr(data$study_metadata$analysis_id)
+    meta_keep <- !is.na(meta_key) & meta_key %in% retained_keys
+    logs[[length(logs) + 1L]] <- .migration_log_row(
+      source_schema, "study_metadata", sum(!meta_keep),
+      "Metadata untuk analysis yang tidak dipertahankan dibuang."
+    )
+    data$study_metadata <- data$study_metadata[meta_keep, , drop = FALSE]
+  }
+  list(data = data, log = .rbind_fill(logs))
+}
+
+.prune_converted_metadata <- function(data, source_schema, migration_log) {
+  used <- unique(c(
+    .normalize_label_key(data$arm_data$study_label),
+    .normalize_label_key(data$effect_data$study_label),
+    .normalize_label_key(data$diagnostic_data$study_label)
+  ))
+  used <- used[!is.na(used)]
+  metadata_key <- .normalize_label_key(data$study_metadata$study_label)
+  keep <- !is.na(metadata_key) & metadata_key %in% used
+  removed <- sum(!keep)
+  data$study_metadata <- data$study_metadata[keep, , drop = FALSE]
+  migration_log <- .rbind_fill(list(
+    migration_log,
+    .migration_log_row(
+      source_schema, "study_metadata", removed,
+      "Metadata studi yang tidak dirujuk oleh data aktif dibuang."
+    )
+  ))
+  for (sheet in names(.sheet_specs)) {
+    dat <- data[[sheet]]
+    drop <- intersect(
+      c("include", "include_flag", "source_sheet", "source_row", "outcome_key",
+        "study_key", "analysis_id", "study_id", "canonical_outcome_name",
+        "canonical_study_label"),
+      names(dat)
+    )
+    if (source_schema == "v2_id") {
+      drop <- setdiff(drop, c("analysis_id", "study_id"))
+    }
+    if (length(drop)) dat[drop] <- NULL
+    dat <- .ensure_columns(dat, .sheet_specs[[sheet]])
+    data[[sheet]] <- dat[, c(.sheet_specs[[sheet]], setdiff(names(dat), .sheet_specs[[sheet]])), drop = FALSE]
+  }
+  list(data = data, log = migration_log)
 }
 
 convert_legacy_workbook <- function(file_path = file.choose(), output_path = NULL) {
@@ -2077,25 +2269,43 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   .require_namespace("openxlsx")
   file_path <- normalizePath(path.expand(file_path), mustWork = TRUE)
   schema <- .detect_auctus_schema(file_path)
-  if (identical(schema, "v22_label")) {
-    stop("Workbook sudah menggunakan schema 2.2 berbasis label dan tidak perlu dikonversi.", call. = FALSE)
+  if (identical(schema, "v23_label")) {
+    stop("Workbook sudah menggunakan schema 2.3 berbasis label dan tidak perlu dikonversi.", call. = FALSE)
   }
-  if (!schema %in% c("v1", "v2_id")) {
-    stop("Workbook bukan template V1 atau V2 berbasis ID yang dikenali.", call. = FALSE)
+  if (!schema %in% c("v1", "v2_id", "v22_label")) {
+    stop("Workbook bukan template V1, V2, atau V2.2 yang dikenali.", call. = FALSE)
   }
   if (is.null(output_path)) {
     output_path <- file.path(
       dirname(file_path),
-      paste0(tools::file_path_sans_ext(basename(file_path)), "_v22_converted.xlsx")
+      paste0(tools::file_path_sans_ext(basename(file_path)), "_v23_converted.xlsx")
     )
   }
+  migration_log <- .migration_log_row(
+    schema, "ALL", 0L, "Migrasi workbook ke schema V2.3 dimulai."
+  )
   converted <- if (schema == "v1") {
-    .convert_v1_tables(file_path)
+    legacy <- .convert_v1_tables(file_path)
+    migration_log <- .rbind_fill(list(
+      migration_log, attr(legacy, "migration_log") %||% data.frame()
+    ))
+    attr(legacy, "migration_log") <- NULL
+    legacy
+  } else if (schema == "v2_id") {
+    filtered <- .filter_legacy_includes(.read_legacy_v2_tables(file_path), schema)
+    migration_log <- .rbind_fill(list(migration_log, filtered$log))
+    .convert_v2_id_tables(filtered$data)
   } else {
-    .convert_v2_id_tables(.read_legacy_v2_tables(file_path))
+    filtered <- .filter_legacy_includes(.read_legacy_label_tables(file_path), schema)
+    migration_log <- .rbind_fill(list(migration_log, filtered$log))
+    filtered$data
   }
-  path <- .write_auctus_workbook(converted, output_path, include_instructions = TRUE)
-  message("Workbook ", toupper(schema), " dikonversi ke schema 2.2: ", path)
+  pruned <- .prune_converted_metadata(converted, schema, migration_log)
+  path <- .write_auctus_workbook(
+    pruned$data, output_path, write_instructions = TRUE,
+    migration_log = pruned$log
+  )
+  message("Workbook ", toupper(schema), " dikonversi ke schema 2.3: ", path)
   invisible(path)
 }
 
@@ -2107,7 +2317,6 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   wb <- .augment_internal_ids(wb)
   analyses <- wb$analyses
   analyses$analysis_id <- .trim_chr(analyses$analysis_id)
-  analyses$include <- .is_yes(analyses$include)
   analyses$analysis_type <- tolower(.trim_chr(analyses$analysis_type))
   analyses$outcome_name <- .trim_chr(analyses$outcome_name)
   analyses$timepoint <- .trim_chr(analyses$timepoint)
@@ -2128,7 +2337,6 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   arms$study_label <- .trim_chr(arms$canonical_study_label)
   arms$treatment <- .trim_chr(arms$treatment)
   if ("arm_id" %in% names(arms)) arms$arm_id <- NULL
-  arms$include <- .is_yes(arms$include)
   for (nm in c("event", "sample", "mean", "sd", "median", "q1", "q3", "min", "max")) {
     arms[[nm]] <- .as_num(arms[[nm]])
   }
@@ -2141,7 +2349,6 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   effects$treat1 <- .trim_chr(effects$treat1)
   effects$treat2 <- .trim_chr(effects$treat2)
   effects$estimate_type <- tolower(.trim_chr(effects$estimate_type))
-  effects$include <- .is_yes(effects$include)
   for (nm in c("effect", "ci_low", "ci_high", "se", "ci_level", "sample1", "sample2")) {
     effects[[nm]] <- .as_num(effects[[nm]])
   }
@@ -2152,7 +2359,6 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   dta$study_id <- .trim_chr(dta$study_id)
   dta$outcome_name <- .trim_chr(dta$canonical_outcome_name)
   dta$study_label <- .trim_chr(dta$canonical_study_label)
-  dta$include <- .is_yes(dta$include)
   for (nm in c("tp", "fp", "fn", "tn")) dta[[nm]] <- .as_num(dta[[nm]])
 
   list(analyses = analyses, study_metadata = metadata, arm_data = arms,
@@ -2246,7 +2452,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     "converted", "conversion_method", "method_note", "source_sheet", "source_row"
   )
   out <- .empty_df(columns)
-  arms <- arms[arms$include & arms$analysis_id == analysis$analysis_id, , drop = FALSE]
+  arms <- arms[arms$analysis_id == analysis$analysis_id, , drop = FALSE]
   if (!nrow(arms)) return(out)
   for (sid in unique(arms$study_id)) {
     study_arms <- arms[arms$study_id == sid, , drop = FALSE]
@@ -2311,7 +2517,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     "converted", "conversion_method", "method_note", "source_sheet", "source_row"
   )
   out <- .empty_df(columns)
-  dat <- effects[effects$include & effects$analysis_id == analysis$analysis_id, , drop = FALSE]
+  dat <- effects[effects$analysis_id == analysis$analysis_id, , drop = FALSE]
   if (!nrow(dat)) return(out)
   ratio <- analysis$effect_measure %in% c("OR", "RR", "HR")
   for (i in seq_len(nrow(dat))) {
@@ -2414,7 +2620,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 }
 
 .raw_binary_pair_data <- function(arms, analysis, selected_studies = NULL) {
-  dat <- arms[arms$include & arms$analysis_id == analysis$analysis_id, , drop = FALSE]
+  dat <- arms[arms$analysis_id == analysis$analysis_id, , drop = FALSE]
   if (!is.null(selected_studies)) dat <- dat[dat$study_id %in% selected_studies, , drop = FALSE]
   out <- data.frame()
   for (sid in unique(dat$study_id)) {
@@ -2522,6 +2728,579 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   }
 }
 
+.forest_favour_labels <- function(analysis, treat1, treat2) {
+  direction <- analysis$outcome_direction %||% "neutral"
+  if (is.na(direction) || direction == "neutral") {
+    return(list(left = "Lower effect", right = "Higher effect"))
+  }
+  if (direction == "lower_better") {
+    list(left = paste("Favours", treat1), right = paste("Favours", treat2))
+  } else {
+    list(left = paste("Favours", treat2), right = paste("Favours", treat1))
+  }
+}
+
+.wrap_plot_header <- function(x, width = 24L) {
+  x <- .trim_chr(x)
+  if (is.na(x) || !nzchar(x)) return("")
+  paste(strwrap(x, width = width), collapse = "\n")
+}
+
+.plot_max_chars <- function(x) {
+  x <- as.character(x)
+  x <- x[!is.na(x)]
+  if (!length(x)) return(0L)
+  max(nchar(x), na.rm = TRUE)
+}
+
+.v1_forest_dimensions <- function(n_studies, study_labels, display_columns = NULL,
+                                  headers = NULL, n_subgroups = 0L,
+                                  atomic_columns = 0L) {
+  study_chars <- .plot_max_chars(study_labels)
+  display_chars <- if (is.null(display_columns)) 0L else
+    max(vapply(display_columns, .plot_max_chars, integer(1)), 0L)
+  header_chars <- .plot_max_chars(headers)
+  header_total_chars <- sum(nchar(as.character(headers %||% character())), na.rm = TRUE)
+  wrapped_headers <- vapply(headers %||% character(), function(x) {
+    length(strsplit(.wrap_plot_header(x, 18L), "\n", fixed = TRUE)[[1L]])
+  }, integer(1))
+  header_lines <- if (length(wrapped_headers)) max(wrapped_headers) else 1L
+  width <- 13.5 + atomic_columns * 0.75 + max(0, study_chars - 18) * 0.09 +
+    max(0, display_chars - 14) * 0.09 + max(0, header_chars - 18) * 0.08 +
+    max(0, header_total_chars - 36) * 0.045
+  height <- 2.5 + n_studies * 0.23 + n_subgroups * 0.85 +
+    max(0L, header_lines - 1L) * 0.35
+  list(width = min(40, max(14, width)), height = min(30, max(5.2, height)))
+}
+
+.write_plot_pair <- function(draw, png_path, pdf_path, width, height, res = 300L) {
+  dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
+  render <- function(open_device) {
+    open_device()
+    owned_device <- grDevices::dev.cur()
+    on.exit({
+      open <- grDevices::dev.list()
+      if (!is.na(owned_device) && !is.null(open) && owned_device %in% open) {
+        grDevices::dev.off(which = owned_device)
+      }
+    }, add = TRUE)
+    draw()
+    grDevices::dev.off(which = owned_device)
+    owned_device <- NA_integer_
+    invisible(NULL)
+  }
+  render(function() grDevices::png(
+    png_path, width = width, height = height, units = "in", res = res
+  ))
+  render(function() grDevices::pdf(pdf_path, width = width, height = height,
+                                    family = "Helvetica", onefile = TRUE))
+  normalizePath(c(png_path, pdf_path), mustWork = FALSE)
+}
+
+.pairwise_forest_mode <- function(canonical) {
+  if (nrow(canonical) && all(canonical$source_type == "raw_derived")) {
+    "raw_atomic"
+  } else {
+    "reported_total_only"
+  }
+}
+
+.pairwise_source_label <- function(source_type, effect_measure = NULL) {
+  labels <- c(adjusted = "Adjusted", crude = "Crude", raw_derived = "Raw-derived")
+  base <- unname(labels[source_type])
+  base[is.na(base)] <- tools::toTitleCase(gsub("_", " ", source_type[is.na(base)]))
+  if (!is.null(effect_measure)) paste(base, effect_measure) else base
+}
+
+.pairwise_source_factor <- function(canonical, effect_measure = NULL) {
+  order <- c("adjusted", "crude", "raw_derived")
+  present <- order[order %in% canonical$source_type]
+  unknown <- setdiff(unique(canonical$source_type), order)
+  levels_raw <- c(present, unknown)
+  factor(
+    .pairwise_source_label(canonical$source_type),
+    levels = .pairwise_source_label(levels_raw)
+  )
+}
+
+.pad_atomic_header_group <- function(leftlabs, leftcols, attach, treatment_label) {
+  if (!length(attach)) return(leftlabs)
+  positions <- match(attach, leftcols)
+  positions <- positions[!is.na(positions)]
+  if (!length(positions)) return(leftlabs)
+  current_chars <- sum(nchar(leftlabs[positions])) + max(0L, length(positions) - 1L) * 2L
+  target_chars <- nchar(treatment_label %||% "") + 6L
+  pad_each <- max(3L, ceiling(max(0L, target_chars - current_chars) /
+                               (2L * length(positions))))
+  pad_each <- min(32L, pad_each)
+  padding <- strrep("\u00A0", pad_each)
+  leftlabs[positions] <- paste0(padding, leftlabs[positions], padding)
+  leftlabs
+}
+
+.attach_pairwise_atomic_columns <- function(model, canonical, analysis,
+                                            forest_mode, show_source_column = FALSE) {
+  index <- match(.normalize_label_key(model$studlab),
+                 .normalize_label_key(canonical$study_label))
+  if (anyNA(index) && length(model$studlab) == nrow(canonical)) {
+    index <- seq_len(nrow(canonical))
+  }
+  dat <- canonical[index, , drop = FALSE]
+  model$label.e <- .first_nonmissing(dat$treat1, "Treatment")
+  model$label.c <- .first_nonmissing(
+    dat$treat2, analysis$reference_treatment %||% "Comparator"
+  )
+  model$data$source_display <- .pairwise_source_label(dat$source_type)
+
+  leftcols <- "studlab"
+  leftlabs <- "Study"
+  label_e_attach <- label_c_attach <- NULL
+  display_columns <- list()
+  if (forest_mode == "raw_atomic" && analysis$outcome_type == "binary") {
+    model[["event.e"]] <- dat$event1
+    model[["n.e"]] <- dat$sample1
+    model[["event.c"]] <- dat$event2
+    model[["n.c"]] <- dat$sample2
+    leftcols <- c(leftcols, "event.e", "n.e", "event.c", "n.c")
+    leftlabs <- c(leftlabs, "Event", "Total", "Event", "Total")
+    label_e_attach <- c("event.e", "n.e")
+    label_c_attach <- c("event.c", "n.c")
+    display_columns <- list(dat$event1, dat$sample1, dat$event2, dat$sample2)
+  } else if (forest_mode == "raw_atomic") {
+    model[["mean.e"]] <- dat$mean1
+    model[["sd.e"]] <- dat$sd1
+    model[["n.e"]] <- dat$sample1
+    model[["mean.c"]] <- dat$mean2
+    model[["sd.c"]] <- dat$sd2
+    model[["n.c"]] <- dat$sample2
+    leftcols <- c(leftcols, "mean.e", "sd.e", "n.e", "mean.c", "sd.c", "n.c")
+    leftlabs <- c(leftlabs, "Mean", "SD", "Total", "Mean", "SD", "Total")
+    label_e_attach <- c("mean.e", "sd.e", "n.e")
+    label_c_attach <- c("mean.c", "sd.c", "n.c")
+    display_columns <- list(dat$mean1, dat$sd1, dat$sample1, dat$mean2, dat$sd2, dat$sample2)
+  } else {
+    if (show_source_column) {
+      leftcols <- c(leftcols, "source_display")
+      leftlabs <- c(leftlabs, "Source")
+      display_columns <- c(display_columns, list(model$data$source_display))
+    }
+    model[["n.e"]] <- dat$sample1
+    model[["n.c"]] <- dat$sample2
+    complete_overall <- all(is.finite(dat$sample1)) && all(is.finite(dat$sample2))
+    model$n.e.pooled <- if (complete_overall) sum(dat$sample1) else NA_real_
+    model$n.c.pooled <- if (complete_overall) sum(dat$sample2) else NA_real_
+    if (!is.null(model$subgroup)) {
+      subgroup_values <- as.character(model$subgroup)
+      subgroup_levels <- model$subgroup.levels %||% unique(subgroup_values)
+      total_pairs <- lapply(subgroup_levels, function(level) {
+        keep <- !is.na(subgroup_values) & subgroup_values == level
+        complete <- any(keep) && all(is.finite(dat$sample1[keep])) &&
+          all(is.finite(dat$sample2[keep]))
+        if (complete) {
+          c(sum(dat$sample1[keep]), sum(dat$sample2[keep]))
+        } else {
+          c(NA_real_, NA_real_)
+        }
+      })
+      total_matrix <- do.call(rbind, total_pairs)
+      model$n.e.w <- stats::setNames(total_matrix[, 1L], subgroup_levels)
+      model$n.c.w <- stats::setNames(total_matrix[, 2L], subgroup_levels)
+    }
+    leftcols <- c(leftcols, "n.e", "n.c")
+    label_e_attach <- "n.e"
+    label_c_attach <- "n.c"
+    leftlabs <- c(leftlabs, "Total", "Total")
+    display_columns <- c(display_columns, list(
+      .format_number(dat$sample1, 0), .format_number(dat$sample2, 0)
+    ))
+  }
+  leftlabs <- .pad_atomic_header_group(
+    leftlabs, leftcols, label_e_attach, model$label.e
+  )
+  leftlabs <- .pad_atomic_header_group(
+    leftlabs, leftcols, label_c_attach, model$label.c
+  )
+  list(
+    model = model, leftcols = leftcols, leftlabs = leftlabs,
+    label_e_attach = label_e_attach, label_c_attach = label_c_attach,
+    display_columns = display_columns, treat1 = model$label.e, treat2 = model$label.c
+  )
+}
+
+.export_pairwise_forest_v1 <- function(model, canonical, analysis, output_dir,
+                                       basename, title, subgroup_name = NULL,
+                                       forest_mode = NULL,
+                                       show_source_column = FALSE,
+                                       print_subgroup_name = TRUE) {
+  if (!nrow(canonical)) return(character())
+  .require_namespace("meta")
+  forest_mode <- forest_mode %||% .pairwise_forest_mode(canonical)
+  atomic <- .attach_pairwise_atomic_columns(
+    model, canonical, analysis, forest_mode, show_source_column
+  )
+  display_model <- atomic$model
+  treat1 <- atomic$treat1
+  treat2 <- atomic$treat2
+  favour <- .forest_favour_labels(analysis, treat1, treat2)
+  n_subgroups <- if (is.null(subgroup_name)) 0L else
+    length(unique(stats::na.omit(display_model$subgroup)))
+  dims <- .v1_forest_dimensions(
+    nrow(canonical), canonical$study_label, atomic$display_columns,
+    c(treat1, treat2, analysis$effect_measure), n_subgroups,
+    atomic_columns = length(atomic$leftcols) - 1L
+  )
+  heading_font_size <- if (max(nchar(c(treat1, treat2)), na.rm = TRUE) > 70L) {
+    6.25
+  } else if (max(nchar(c(treat1, treat2)), na.rm = TRUE) > 48L) {
+    7
+  } else if (max(nchar(c(treat1, treat2)), na.rm = TRUE) > 34L) {
+    7.75
+  } else {
+    8.5
+  }
+  if (!is.null(subgroup_name)) display_model$subgroup.name <- subgroup_name
+  prediction_available <- isTRUE(nrow(canonical) >= 5L) &&
+    any(is.finite(c(display_model$lower.predict, display_model$upper.predict)))
+  forest_args <- list(
+    x = display_model,
+    common = FALSE,
+    random = TRUE,
+    overall = TRUE,
+    prediction = prediction_available,
+    overall.hetstat = TRUE,
+    print.I2 = TRUE,
+    print.tau2 = TRUE,
+    print.pval.Q = TRUE,
+    test.subgroup.random = !is.null(subgroup_name) && n_subgroups >= 2L,
+    leftcols = atomic$leftcols,
+    leftlabs = atomic$leftlabs,
+    label.e = treat1,
+    label.c = treat2,
+    label.e.attach = atomic$label_e_attach,
+    label.c.attach = atomic$label_c_attach,
+    rightcols = c("effect", "ci", "w.random"),
+    rightlabs = c(analysis$effect_measure, "95% CI", "Weight"),
+    label.left = favour$left,
+    label.right = favour$right,
+    lab.NA = "NR",
+    digits = 2,
+    digits.mean = 2,
+    digits.sd = 2,
+    digits.event = 0,
+    digits.weight = 1,
+    just.studlab = "left",
+    just.addcols.left = "center",
+    just.label.e = "center",
+    just.label.c = "center",
+    fontsize = 8.5,
+    fs.heading = heading_font_size,
+    fs.study = 8.5,
+    fs.study.labels = 8.5,
+    fs.lr = 8,
+    col.square = "black",
+    col.square.lines = "black",
+    col.diamond = "black",
+    col.diamond.lines = "black",
+    col.predict = "#C00000",
+    col.predict.lines = "black",
+    spacing = if (nrow(canonical) > 25L) 0.9 else 1.05,
+    plotwidth = "6cm",
+    colgap = "3mm",
+    colgap.left = "2mm",
+    colgap.forest.left = "10mm",
+    colgap.forest.right = "5mm",
+    smlab = ""
+  )
+  if (!is.null(subgroup_name)) {
+    # A vector prevents meta::forest() from suppressing the subtotal row for
+    # a source block that contains a single reported estimate.
+    forest_args$subgroup <- rep(TRUE, n_subgroups)
+    forest_args$subgroup.hetstat <- rep(TRUE, n_subgroups)
+    forest_args$print.Q.subgroup <- TRUE
+    forest_args$common.subgroup <- FALSE
+    forest_args$random.subgroup <- TRUE
+    forest_args$print.subgroup.name <- print_subgroup_name
+    forest_args$prediction.subgroup <- FALSE
+    if (identical(subgroup_name, "Estimate source")) {
+      dims$width <- max(dims$width, 19)
+      dims$height <- min(30, max(
+        dims$height,
+        4.5 + nrow(canonical) * 0.36 + n_subgroups
+      ))
+      forest_args$colgap <- "5mm"
+      forest_args$colgap.left <- "4mm"
+    }
+  }
+  draw <- function() {
+    do.call(meta::forest, forest_args)
+    grid::grid.text(
+      title, x = grid::unit(0.5, "npc"), y = grid::unit(0.985, "npc"),
+      gp = grid::gpar(fontfamily = "sans", fontsize = 12, fontface = "bold")
+    )
+  }
+  base <- file.path(output_dir, basename)
+  .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"),
+                   dims$width, dims$height)
+}
+
+.run_source_subgroups <- function(canonical, analysis) {
+  forest_mode <- .pairwise_forest_mode(canonical)
+  if (forest_mode == "raw_atomic") {
+    return(list(
+      tables = data.frame(), model = NULL, forest_mode = forest_mode,
+      source_count = 0L
+    ))
+  }
+  group <- .pairwise_source_factor(canonical, analysis$effect_measure)
+  fit <- .fit_metagen(
+    canonical, analysis$effect_measure,
+    prediction = nrow(canonical) >= 5L, subgroup = group
+  )
+  levels_present <- levels(droplevels(group))
+  rows <- lapply(levels_present, function(level) {
+    keep <- !is.na(group) & group == level
+    dat <- canonical[keep, , drop = FALSE]
+    model <- .fit_metagen(dat, analysis$effect_measure, prediction = FALSE)
+    complete_total1 <- nrow(dat) > 0L && all(is.finite(dat$sample1))
+    complete_total2 <- nrow(dat) > 0L && all(is.finite(dat$sample2))
+    data.frame(
+      analysis_id = analysis$analysis_id,
+      subgroup_variable = "estimate_source",
+      subgroup = level,
+      k = nrow(dat),
+      TE = as.numeric(model$TE.random),
+      seTE = as.numeric(model$seTE.random),
+      lower = as.numeric(model$lower.random),
+      upper = as.numeric(model$upper.random),
+      tau2 = as.numeric(model$tau2 %||% NA_real_),
+      i2_percent = 100 * as.numeric(model$I2 %||% NA_real_),
+      total_treat1 = if (complete_total1) sum(dat$sample1) else NA_real_,
+      total_treat2 = if (complete_total2) sum(dat$sample2) else NA_real_,
+      test_for_difference_p = if (length(levels_present) >= 2L) {
+        as.numeric(fit$pval.Q.b.random %||% NA_real_)
+      } else {
+        NA_real_
+      },
+      stringsAsFactors = FALSE
+    )
+  })
+  fit$subgroup.name <- "Estimate source"
+  list(
+    tables = if (length(rows)) do.call(rbind, rows) else data.frame(),
+    model = fit, forest_mode = forest_mode,
+    source_count = length(levels_present)
+  )
+}
+
+.export_nma_forest_v1 <- function(model, counts, rank, analysis, output_dir,
+                                  reference) {
+  .require_namespace("netmeta")
+  treatments <- as.character(model$trts)
+  add_data <- data.frame(
+    Studies = rep(NA_character_, length(treatments)),
+    Participants = rep(NA_character_, length(treatments)),
+    Pscore = rep(NA_character_, length(treatments)),
+    row.names = treatments, stringsAsFactors = FALSE
+  )
+  count_index <- match(treatments, counts$treatment)
+  add_data$Studies <- ifelse(
+    is.na(count_index), "NR", .format_number(counts$k_studies[count_index], 0)
+  )
+  add_data$Participants <- ifelse(
+    is.na(count_index) | is.na(counts$participants[count_index]), "NR",
+    .format_number(counts$participants[count_index], 0)
+  )
+  if (!is.null(rank)) {
+    score <- unname(rank$Pscore.random[match(treatments, names(rank$Pscore.random))])
+    add_data$Pscore <- ifelse(is.na(score), "NR", .format_number(score, 2))
+  } else {
+    add_data$Pscore <- "NR"
+  }
+  favour <- .forest_favour_labels(analysis, "listed treatment", reference)
+  dims <- .v1_forest_dimensions(
+    max(1L, length(treatments) - 1L), treatments,
+    list(add_data$Studies, add_data$Participants, add_data$Pscore),
+    c("Treatment", "Studies", "Participants", "P-score", analysis$effect_measure)
+  )
+  forest_args <- list(
+    x = model,
+    pooled = "random",
+    reference.group = reference,
+    baseline.reference = FALSE,
+    drop.reference.group = TRUE,
+    add.data = add_data,
+    leftcols = c("studlab", "Studies", "Participants", "Pscore"),
+    leftlabs = c("Treatment", "Studies", "Participants", "P-score"),
+    rightcols = c("effect", "ci"),
+    rightlabs = c(analysis$effect_measure, "95% CI"),
+    label.left = favour$left,
+    label.right = favour$right,
+    overall.hetstat = TRUE,
+    print.I2 = TRUE,
+    print.tau2 = TRUE,
+    digits = 2,
+    equal.size = TRUE,
+    col.square = "black",
+    col.square.lines = "black",
+    col.diamond = "black",
+    col.diamond.lines = "black",
+    plotwidth = "6cm",
+    colgap = "3mm",
+    colgap.forest.left = "10mm",
+    colgap.forest.right = "5mm",
+    smlab = ""
+  )
+  title <- paste0("Network meta-analysis: ", analysis$outcome_name, " vs ", reference)
+  draw <- function() {
+    do.call(meta::forest, forest_args)
+    grid::grid.text(
+      title, x = grid::unit(0.5, "npc"), y = grid::unit(0.985, "npc"),
+      gp = grid::gpar(fontfamily = "sans", fontsize = 12, fontface = "bold")
+    )
+  }
+  base <- file.path(output_dir, "forest_nma")
+  .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"),
+                   dims$width, dims$height)
+}
+
+.export_single_arm_forest_v1 <- function(model, dat, analysis, output_dir,
+                                         basename, title, subgroup_name = NULL) {
+  if (!nrow(dat)) return(character())
+  .require_namespace("meta")
+  display_model <- model
+  n_subgroups <- if (is.null(subgroup_name)) 0L else
+    length(unique(stats::na.omit(display_model$subgroup)))
+  if (!is.null(subgroup_name)) display_model$subgroup.name <- subgroup_name
+  if (analysis$outcome_type == "proportion") {
+    leftcols <- c("studlab", "event", "n")
+    leftlabs <- c("Study", "Events", "Total")
+    measure <- "Proportion"
+  } else {
+    index <- match(.normalize_label_key(display_model$studlab),
+                   .normalize_label_key(dat$study_label))
+    display_model$data$mean_display <- .format_number(dat$mean[index])
+    display_model$data$sd_display <- .format_number(dat$sd[index])
+    display_model$data$n_display <- .format_number(dat$sample[index], 0)
+    leftcols <- c("studlab", "mean_display", "sd_display", "n_display")
+    leftlabs <- c("Study", "Mean", "SD", "Total")
+    measure <- "Mean"
+  }
+  dims <- .v1_forest_dimensions(
+    nrow(dat), dat$study_label,
+    if (analysis$outcome_type == "proportion") list(dat$event, dat$sample) else
+      list(dat$mean, dat$sd, dat$sample),
+    c(leftlabs, measure), n_subgroups
+  )
+  prediction_available <- nrow(dat) >= 5L &&
+    any(is.finite(c(display_model$lower.predict, display_model$upper.predict)))
+  forest_args <- list(
+    x = display_model, common = FALSE, random = TRUE, overall = TRUE,
+    prediction = prediction_available, overall.hetstat = TRUE,
+    print.I2 = TRUE, print.tau2 = TRUE, print.pval.Q = TRUE,
+    print.subgroup.name = !is.null(subgroup_name),
+    test.subgroup.random = !is.null(subgroup_name),
+    leftcols = leftcols, leftlabs = leftlabs,
+    rightcols = c("effect", "ci", "w.random"),
+    rightlabs = c(measure, "95% CI", "Weight"),
+    digits = 2, digits.weight = 1,
+    col.square = "black", col.square.lines = "black",
+    col.diamond = "black", col.diamond.lines = "black",
+    col.predict = "#C00000", col.predict.lines = "black",
+    spacing = if (nrow(dat) > 25L) 0.9 else 1.05,
+    plotwidth = "6cm", colgap = "3mm",
+    colgap.forest.left = "10mm", colgap.forest.right = "5mm", smlab = ""
+  )
+  draw <- function() {
+    do.call(meta::forest, forest_args)
+    grid::grid.text(
+      title, x = grid::unit(0.5, "npc"), y = grid::unit(0.985, "npc"),
+      gp = grid::gpar(fontfamily = "sans", fontsize = 12, fontface = "bold")
+    )
+  }
+  base <- file.path(output_dir, basename)
+  .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"),
+                   dims$width, dims$height)
+}
+
+.export_loo_plot_v1 <- function(table_out, overall, analysis, output_dir,
+                                measure = analysis$effect_measure) {
+  if (!nrow(table_out)) return(character())
+  dat <- table_out[order(table_out$estimate), , drop = FALSE]
+  max_chars <- .plot_max_chars(dat$omitted_study)
+  cex_axis <- if (max_chars > 45L) 0.55 else if (max_chars > 35L) 0.65 else
+    if (max_chars > 25L) 0.75 else 0.85
+  left_margin <- max(11, ceiling(max_chars * cex_axis * 0.5) + 3)
+  width <- min(18, max(10, 8 + max(0, max_chars - 20) * 0.08))
+  height <- min(24, max(5, 2.4 + nrow(dat) * 0.36))
+  ratio <- .ratio_measure(measure)
+  range_x <- range(c(dat$ci_low, dat$ci_high, overall), finite = TRUE)
+  if (diff(range_x) == 0) range_x <- range_x + c(-0.5, 0.5)
+  draw <- function() {
+    graphics::par(mar = c(5, left_margin, 4, 2), family = "sans")
+    y <- seq_len(nrow(dat))
+    graphics::plot(
+      dat$estimate, y, xlim = range_x, xlab = paste("Pooled", measure, "after omission"),
+      ylab = "", pch = 19, yaxt = "n", log = if (ratio) "x" else "",
+      main = paste("Leave-One-Out:", analysis$outcome_name)
+    )
+    graphics::axis(2, at = y, labels = dat$omitted_study, las = 1,
+                   cex.axis = cex_axis, tick = FALSE)
+    graphics::segments(dat$ci_low, y, dat$ci_high, y, lwd = 1.2)
+    graphics::abline(v = overall, lty = 2, lwd = 2, col = "#C00000")
+    graphics::mtext("Omitted study", side = 2, line = left_margin - 1.5,
+                    cex = 0.9, font = 2)
+    graphics::legend(
+      "bottomright", legend = "Overall estimate", lty = 2, lwd = 2,
+      col = "#C00000", bty = "n", cex = 0.85
+    )
+  }
+  base <- file.path(output_dir, "leave_one_out")
+  .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"), width, height)
+}
+
+.export_bubble_plot_v1 <- function(fit, x, dat, analysis, moderator, output_dir) {
+  grid_x <- seq(min(x), max(x), length.out = 200L)
+  pred <- stats::predict(fit, newmods = grid_x)
+  ratio <- .ratio_measure(analysis$effect_measure)
+  transform <- if (ratio) exp else identity
+  y <- transform(dat$TE)
+  fitted <- transform(pred$pred)
+  lower <- transform(pred$ci.lb)
+  upper <- transform(pred$ci.ub)
+  weights <- 1 / (dat$seTE^2 + fit$tau2)
+  point_cex <- 0.8 + 2.4 * sqrt(weights / max(weights, na.rm = TRUE))
+  moderator_label <- gsub("_", " ", sub("^moderator_num_", "", moderator))
+  y_range <- range(c(y, lower, upper), finite = TRUE)
+  p_value <- as.numeric(fit$QMp %||% NA_real_)
+  r2 <- as.numeric(fit$R2 %||% NA_real_)
+  draw <- function() {
+    graphics::par(mar = c(5, 5, 4.5, 2), family = "sans")
+    graphics::plot(
+      x, y, type = "n", xlab = moderator_label,
+      ylab = analysis$effect_measure, ylim = y_range,
+      log = if (ratio) "y" else "",
+      main = paste("Bubble plot:", analysis$outcome_name)
+    )
+    graphics::polygon(
+      c(grid_x, rev(grid_x)), c(lower, rev(upper)),
+      border = NA, col = grDevices::adjustcolor("lightblue", alpha.f = 0.45)
+    )
+    graphics::lines(grid_x, fitted, col = "steelblue4", lwd = 2)
+    graphics::abline(h = if (ratio) 1 else 0, lty = 2, col = "grey45")
+    graphics::points(
+      x, y, pch = 21, cex = point_cex, bg = grDevices::adjustcolor("steelblue", 0.7),
+      col = "steelblue4", lwd = 0.8
+    )
+    legend_text <- paste0(
+      "R2 = ", ifelse(is.finite(r2), paste0(.format_number(r2, 1), "%"), "NR"),
+      "\nModerator p = ", ifelse(is.finite(p_value), .format_number(p_value, 3), "NR")
+    )
+    graphics::legend("topright", legend = legend_text, bty = "n", cex = 0.85)
+  }
+  base <- file.path(output_dir, paste0("bubble_", .safe_name(moderator)))
+  .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"), 9, 7)
+}
+
 .forest_grob <- function(plot_data, title, sm, left_header = "Study",
                          data1_header = "Treatment", data2_header = "Comparator",
                          x_label = NULL, null = NULL, reference = NULL,
@@ -2558,14 +3337,14 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     ggplot2::geom_vline(xintercept = null, colour = "#666666", linewidth = 0.5) +
     ggplot2::geom_segment(
       ggplot2::aes(x = ci_low, xend = ci_high, yend = row_index),
-      linewidth = 0.55, colour = "#1F4E78", na.rm = TRUE
+      linewidth = 0.55, colour = "black", na.rm = TRUE
     ) +
     ggplot2::geom_point(
       ggplot2::aes(x = estimate, size = point_size, shape = is_overall),
-      colour = "#1F4E78", fill = "#5B9BD5", stroke = 0.8, na.rm = TRUE
+      colour = "black", fill = "black", stroke = 0.8, na.rm = TRUE
     ) +
     ggplot2::scale_size_identity() +
-    ggplot2::scale_shape_manual(values = c(`FALSE` = 21, `TRUE` = 23), guide = "none") +
+    ggplot2::scale_shape_manual(values = c(`FALSE` = 15, `TRUE` = 23), guide = "none") +
     ggplot2::coord_cartesian(ylim = c(0.3, max(d$row_index) + 1.4), clip = "off") +
     ggplot2::labs(x = x_label %||% sm, y = NULL) +
     ggplot2::theme_minimal(base_family = "sans", base_size = 9) +
@@ -2615,8 +3394,14 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   if (is.null(null)) null <- if (.ratio_measure(sm)) 1 else 0
   pages <- split(seq_len(nrow(plot_data)), ceiling(seq_len(nrow(plot_data)) / page_size))
-  max_label <- max(nchar(c(plot_data$label, plot_data$data1, plot_data$data2)), na.rm = TRUE)
-  width <- min(18, max(11, 10 + max_label * 0.035))
+  max_nchar <- function(x) {
+    x <- as.character(x)
+    x <- x[!is.na(x)]
+    if (length(x)) max(nchar(x)) else 0
+  }
+  text_budget <- max_nchar(plot_data$label) + max_nchar(plot_data$data1) +
+    max_nchar(plot_data$data2) + max_nchar(plot_data$effect_text)
+  width <- min(20, max(12, 8.5 + text_budget * 0.07))
   paths <- character()
   pdf_path <- file.path(output_dir, paste0(basename, ".pdf"))
   grDevices::pdf(pdf_path, width = width, height = min(14, max(5, 2.2 + min(page_size, nrow(plot_data)) * 0.28)),
@@ -2719,22 +3504,13 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     table_out <- do.call(rbind, rows)
     tables[[col]] <- table_out
     models[[col]] <- fit
-    sm <- analysis$effect_measure
-    est <- .natural_effect(table_out$TE, sm)
-    lo <- .natural_effect(table_out$lower, sm)
-    hi <- .natural_effect(table_out$upper, sm)
-    plot_data <- data.frame(
-      label = table_out$subgroup, data1 = paste0("k=", table_out$k),
-      data2 = paste0("p diff=", .format_number(table_out$test_for_difference_p, 3)),
-      estimate = est, ci_low = lo, ci_high = hi, weight = table_out$k,
-      effect_text = .format_effect_ci(est, lo, hi, sm), is_overall = FALSE,
-      stringsAsFactors = FALSE
-    )
-    plots <- c(plots, .export_forest(
-      plot_data, output_dir, paste0("forest_subgroup_", .safe_name(col)),
+    plots <- c(plots, .export_pairwise_forest_v1(
+      fit, dat, analysis, output_dir,
+      paste0("forest_subgroup_", .safe_name(col)),
       paste0(analysis$outcome_name, " | Subgroup: ", sub("^subgroup_", "", col)),
-      sm, data1_header = "Studies", data2_header = "Interaction",
-      x_label = analysis$effect_measure
+      subgroup_name = gsub("_", " ", sub("^subgroup_", "", col)),
+      forest_mode = .pairwise_forest_mode(canonical),
+      show_source_column = .pairwise_forest_mode(canonical) == "reported_total_only"
     ))
   }
   list(
@@ -2765,47 +3541,17 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       analysis_id = analysis$analysis_id, moderator = col,
       term = rownames(fit$beta), estimate = as.numeric(fit$beta),
       se = fit$se, ci_low = fit$ci.lb, ci_high = fit$ci.ub, p_value = fit$pval,
+      moderator_test_p = as.numeric(fit$QMp %||% NA_real_),
+      r2_percent = as.numeric(fit$R2 %||% NA_real_),
+      residual_tau2 = as.numeric(fit$tau2 %||% NA_real_),
       k = fit$k, stringsAsFactors = FALSE
     )
     tables[[col]] <- coef_table
     models[[col]] <- fit
     if (numeric_mod) {
-      pred_grid <- seq(min(x_use), max(x_use), length.out = 100)
-      pred <- stats::predict(fit, newmods = pred_grid)
-      ratio <- .ratio_measure(analysis$effect_measure)
-      plot_df <- data.frame(
-        x = x_use,
-        y = if (ratio) exp(dat$TE) else dat$TE,
-        weight = 1 / (dat$seTE^2 + fit$tau2),
-        study = dat$study_label
-      )
-      line_df <- data.frame(
-        x = pred_grid,
-        estimate = if (ratio) exp(pred$pred) else pred$pred,
-        lower = if (ratio) exp(pred$ci.lb) else pred$ci.lb,
-        upper = if (ratio) exp(pred$ci.ub) else pred$ci.ub
-      )
-      p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = x, y = y)) +
-        ggplot2::geom_ribbon(data = line_df, ggplot2::aes(x = x, ymin = lower, ymax = upper),
-                             inherit.aes = FALSE, fill = "#D9EAF7", alpha = 0.8) +
-        ggplot2::geom_line(data = line_df, ggplot2::aes(x = x, y = estimate),
-                           inherit.aes = FALSE, colour = "#1F4E78", linewidth = 0.8) +
-        ggplot2::geom_point(ggplot2::aes(size = weight), shape = 21, fill = "#5B9BD5",
-                            colour = "#1F4E78", alpha = 0.8) +
-        ggplot2::geom_hline(yintercept = if (ratio) 1 else 0, linetype = 2, colour = "#777777") +
-        ggplot2::scale_size_area(max_size = 12, guide = "none") +
-        ggplot2::labs(
-          title = paste0("Bubble plot: ", analysis$outcome_name),
-          subtitle = paste0(sub("^moderator_num_", "", col),
-                            " | Meta-regression is observational, not causal"),
-          x = sub("^moderator_num_", "", col), y = analysis$effect_measure
-        ) +
-        ggplot2::theme_minimal(base_family = "sans", base_size = 10)
-      if (ratio) p <- p + ggplot2::scale_y_log10()
-      base <- file.path(output_dir, paste0("bubble_", .safe_name(col)))
-      ggplot2::ggsave(paste0(base, ".png"), p, width = 8.5, height = 6, dpi = 300)
-      ggplot2::ggsave(paste0(base, ".pdf"), p, width = 8.5, height = 6, device = "pdf")
-      plots <- c(plots, paste0(base, c(".png", ".pdf")))
+      plots <- c(plots, .export_bubble_plot_v1(
+        fit, x_use, dat, analysis, col, output_dir
+      ))
     }
   }
   list(
@@ -2827,20 +3573,16 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     stringsAsFactors = FALSE
   )
   sm <- analysis$effect_measure
-  est <- .natural_effect(table_out$TE, sm)
-  lo <- .natural_effect(table_out$lower, sm)
-  hi <- .natural_effect(table_out$upper, sm)
-  plot_data <- data.frame(
-    label = table_out$omitted_study, data1 = "Study omitted", data2 = "",
-    estimate = est, ci_low = lo, ci_high = hi, weight = 1,
-    effect_text = .format_effect_ci(est, lo, hi, sm), is_overall = FALSE,
+  plot_table <- data.frame(
+    omitted_study = table_out$omitted_study,
+    estimate = .natural_effect(table_out$TE, sm),
+    ci_low = .natural_effect(table_out$lower, sm),
+    ci_high = .natural_effect(table_out$upper, sm),
     stringsAsFactors = FALSE
   )
-  paths <- .export_forest(
-    plot_data, output_dir, "leave_one_out",
-    paste0("Leave-one-out: ", analysis$outcome_name), sm,
-    data1_header = "Scenario", data2_header = "", x_label = analysis$effect_measure,
-    reference = .natural_effect(as.numeric(fit$b[[1L]]), sm)
+  paths <- .export_loo_plot_v1(
+    plot_table, .natural_effect(as.numeric(fit$b[[1L]]), sm),
+    analysis, output_dir, sm
   )
   list(table = table_out, model = fit, plots = paths)
 }
@@ -3001,16 +3743,19 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   }
 
   summary <- .meta_summary_row(model, analysis, method_name)
-  plot_data <- .pairwise_plot_data(canonical, summary, analysis, model$tau2 %||% 0)
-  treat1 <- .first_nonmissing(canonical$treat1, "Treatment")
-  treat2 <- .first_nonmissing(canonical$treat2, analysis$reference_treatment %||% "Comparator")
-  plots <- .export_forest(
-    plot_data, output_dir, "forest_overall",
-    .analysis_title(analysis),
-    analysis$effect_measure,
-    data1_header = treat1, data2_header = treat2,
-    x_label = .forest_favour_label(analysis, treat1, treat2),
-    right_header = paste0(analysis$effect_measure, " [95% CI] | Weight")
+  source_subgroup <- .run_source_subgroups(canonical, analysis)
+  forest_model <- if (!is.null(source_subgroup$model)) source_subgroup$model else model
+  forest_subgroup_name <- if (source_subgroup$forest_mode == "reported_total_only") {
+    "Estimate source"
+  } else {
+    NULL
+  }
+  plots <- .export_pairwise_forest_v1(
+    forest_model, canonical, analysis, output_dir, "forest_overall",
+    .analysis_title(analysis), subgroup_name = forest_subgroup_name,
+    forest_mode = source_subgroup$forest_mode,
+    show_source_column = FALSE,
+    print_subgroup_name = FALSE
   )
   subgroup <- .run_subgroups(canonical, analysis, output_dir)
   metareg <- .run_meta_regression(canonical, analysis, output_dir)
@@ -3021,12 +3766,27 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     .study_design_sensitivity(canonical, analysis),
     binary_sensitivity
   ))
+  method_decisions <- .rbind_fill(list(
+    method_decisions,
+    data.frame(
+      analysis_id = analysis$analysis_id,
+      decision = "forest_mode",
+      value = source_subgroup$forest_mode,
+      reason = if (source_subgroup$forest_mode == "raw_atomic") {
+        "All selected primary estimates are raw-derived."
+      } else {
+        "At least one selected primary estimate is adjusted or crude."
+      },
+      stringsAsFactors = FALSE
+    )
+  ))
 
   list(
     status = "SUCCESS", analysis = analysis, model = model,
     canonical = canonical, all_sources = canonical_bundle$all_sources,
     summary = summary, sensitivity = sensitivity,
-    subgroup = subgroup, meta_regression = metareg, loo = loo, funnel = funnel,
+    subgroup = subgroup, source_subgroup = source_subgroup,
+    meta_regression = metareg, loo = loo, funnel = funnel,
     method_decisions = method_decisions,
     plots = unique(c(plots, subgroup$plots, metareg$plots, loo$plots, funnel$plots))
   )
@@ -3034,7 +3794,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 
 .single_arm_subgroups <- function(dat, analysis, output_dir) {
   subgroup_cols <- grep("^subgroup_", names(dat), value = TRUE)
-  tables <- list(); plots <- character()
+  tables <- list(); models <- list(); plots <- character()
   for (col in subgroup_cols) {
     values <- .trim_chr(dat[[col]])
     counts <- table(values)
@@ -3046,14 +3806,18 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       if (analysis$outcome_type == "proportion") {
         meta::metaprop(
           event = eligible_data$event, n = eligible_data$sample,
-          studlab = eligible_data$study_label, subgroup = eligible_groups,
+          studlab = eligible_data$study_label, data = eligible_data,
+          subgroup = eligible_groups,
+          subgroup.name = gsub("_", " ", sub("^subgroup_", "", col)),
           sm = "PLOGIT", method = "GLMM", common = TRUE, random = TRUE,
           method.tau = "ML", method.random.ci = "classic", prediction = FALSE
         )
       } else {
         meta::metamean(
           n = eligible_data$sample, mean = eligible_data$mean, sd = eligible_data$sd,
-          studlab = eligible_data$study_label, subgroup = eligible_groups,
+          studlab = eligible_data$study_label, data = eligible_data,
+          subgroup = eligible_groups,
+          subgroup.name = gsub("_", " ", sub("^subgroup_", "", col)),
           sm = "MRAW", common = TRUE, random = TRUE, method.tau = "REML",
           method.random.ci = "HK", adhoc.hakn.ci = "se", prediction = FALSE
         )
@@ -3091,23 +3855,20 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     }
     table_out <- do.call(rbind, rows)
     tables[[col]] <- table_out
-    sm <- if (analysis$outcome_type == "proportion") "Proportion" else "Mean"
-    plot_data <- data.frame(
-      label = table_out$subgroup, data1 = paste0("k=", table_out$k),
-      data2 = paste0("p diff=", .format_number(table_out$test_for_difference_p, 3)),
-      estimate = table_out$estimate, ci_low = table_out$ci_low, ci_high = table_out$ci_high,
-      weight = table_out$k,
-      effect_text = .format_effect_ci(table_out$estimate, table_out$ci_low, table_out$ci_high, sm),
-      is_overall = FALSE, stringsAsFactors = FALSE
-    )
-    plots <- c(plots, .export_forest(
-      plot_data, output_dir, paste0("forest_subgroup_", .safe_name(col)),
-      paste0(analysis$outcome_name, " | Subgroup: ", sub("^subgroup_", "", col)),
-      sm, data1_header = "Studies", data2_header = "Interaction", x_label = sm,
-      null = if (analysis$outcome_type == "proportion") 0 else 0
-    ))
+    if (!is.null(difference_model)) {
+      models[[col]] <- difference_model
+      plots <- c(plots, .export_single_arm_forest_v1(
+        difference_model, eligible_data, analysis, output_dir,
+        paste0("forest_subgroup_", .safe_name(col)),
+        paste0(analysis$outcome_name, " | Subgroup: ", sub("^subgroup_", "", col)),
+        subgroup_name = gsub("_", " ", sub("^subgroup_", "", col))
+      ))
+    }
   }
-  list(tables = if (length(tables)) do.call(rbind, tables) else data.frame(), plots = plots)
+  list(
+    tables = if (length(tables)) do.call(rbind, tables) else data.frame(),
+    models = models, plots = plots
+  )
 }
 
 .run_proportion_loo <- function(arms, analysis, output_dir, overall_model) {
@@ -3134,18 +3895,10 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   }
   if (!length(rows)) return(list(table = data.frame(), model = NULL, plots = character()))
   table_out <- do.call(rbind, rows)
-  plot_data <- data.frame(
-    label = table_out$omitted_study, data1 = "Study omitted", data2 = "",
-    estimate = table_out$estimate, ci_low = table_out$ci_low, ci_high = table_out$ci_high,
-    weight = 1, effect_text = .format_effect_ci(
-      table_out$estimate, table_out$ci_low, table_out$ci_high, "Proportion"
-    ), is_overall = FALSE, stringsAsFactors = FALSE
-  )
-  plots <- .export_forest(
-    plot_data, output_dir, "leave_one_out",
-    paste0("Leave-one-out: ", analysis$outcome_name), "Proportion",
-    data1_header = "Scenario", data2_header = "", x_label = "Proportion",
-    null = 0, reference = stats::plogis(overall_model$TE.random)
+  plot_table <- table_out[, c("omitted_study", "estimate", "ci_low", "ci_high"), drop = FALSE]
+  plots <- .export_loo_plot_v1(
+    plot_table, stats::plogis(overall_model$TE.random), analysis,
+    output_dir, "Proportion"
   )
   list(table = table_out, model = overall_model, plots = plots)
 }
@@ -3171,7 +3924,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 }
 
 .run_single_arm_analysis_v2 <- function(data, analysis, output_dir) {
-  arms <- data$arm_data[data$arm_data$include & data$arm_data$analysis_id == analysis$analysis_id, , drop = FALSE]
+  arms <- data$arm_data[data$arm_data$analysis_id == analysis$analysis_id, , drop = FALSE]
   metadata <- data$study_metadata
   arms$._order <- seq_len(nrow(arms))
   metadata_drop <- c("analysis_id", "study_key", "source_sheet", "source_row")
@@ -3277,13 +4030,9 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     )
     sm_plot <- "Mean"
   }
-  plots <- .export_forest(
-    plot_data, output_dir, "forest_overall",
-    .analysis_title(analysis), sm_plot,
-    data1_header = if (analysis$outcome_type == "proportion") "Events / N" else "Mean (SD)",
-    data2_header = if (analysis$outcome_type == "proportion") "Note" else "Sample",
-    x_label = sm_plot, null = 0,
-    right_header = paste0(sm_plot, " [95% CI] | Weight")
+  plots <- .export_single_arm_forest_v1(
+    model, arms, analysis, output_dir, "forest_overall",
+    .analysis_title(analysis)
   )
   subgroup <- .single_arm_subgroups(arms, analysis, output_dir)
   analysis_for_effects <- analysis
@@ -3440,8 +4189,9 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 
 .run_diagnostic_analysis_v2 <- function(data, analysis, output_dir) {
   .require_namespace("mada")
-  dat <- data$diagnostic_data[data$diagnostic_data$include &
-                                data$diagnostic_data$analysis_id == analysis$analysis_id, , drop = FALSE]
+  dat <- data$diagnostic_data[
+    data$diagnostic_data$analysis_id == analysis$analysis_id, , drop = FALSE
+  ]
   metadata <- data$study_metadata
   metadata_drop <- c("analysis_id", "study_key", "source_sheet", "source_row")
   if ("study_label" %in% names(dat)) metadata_drop <- c(metadata_drop, "study_label")
@@ -3510,7 +4260,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 
 .nma_treatment_counts <- function(canonical, data, analysis) {
   treatments <- unique(c(canonical$treat1, canonical$treat2))
-  arms <- data$arm_data[data$arm_data$include & data$arm_data$analysis_id == analysis$analysis_id, , drop = FALSE]
+  arms <- data$arm_data[data$arm_data$analysis_id == analysis$analysis_id, , drop = FALSE]
   rows <- lapply(treatments, function(trt) {
     studies <- unique(canonical$study_id[canonical$treat1 == trt | canonical$treat2 == trt])
     arm_unique <- arms[arms$treatment == trt, c("study_id", "treatment", "sample"), drop = FALSE]
@@ -3668,24 +4418,8 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     )
   })
   summary <- do.call(rbind, rows)
-  plot_data <- data.frame(
-    label = summary$treatment,
-    data1 = paste0("k=", summary$k_studies),
-    data2 = paste0(
-      ifelse(is.na(summary$participants), "N=NR", paste0("N=", .format_number(summary$participants, 0))),
-      ifelse(is.na(summary$pscore), "", paste0(" | P-score=", .format_number(summary$pscore, 2)))
-    ),
-    estimate = summary$estimate, ci_low = summary$ci_low, ci_high = summary$ci_high,
-    weight = ifelse(is.na(summary$pscore), 1, pmax(summary$pscore, 0.05)),
-    effect_text = .format_effect_ci(summary$estimate, summary$ci_low, summary$ci_high, analysis$effect_measure),
-    is_overall = FALSE, stringsAsFactors = FALSE
-  )
-  plots <- .export_forest(
-    plot_data, output_dir, "forest_nma",
-    paste0("Network meta-analysis: ", analysis$outcome_name, " vs ", reference),
-    analysis$effect_measure, left_header = "Treatment",
-    data1_header = "Studies", data2_header = "Participants | Ranking",
-    x_label = .forest_favour_label(analysis, "listed treatment", reference)
+  plots <- .export_nma_forest_v1(
+    model, counts, rank, analysis, output_dir, reference
   )
 
   network_base <- file.path(output_dir, "network_graph")
@@ -3789,6 +4523,17 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     STUDY_EFFECTS = collect(function(x) x$canonical %||% data.frame()),
     SENSITIVITY = collect(function(x) x$sensitivity %||% data.frame()),
     SUBGROUP = collect(function(x) x$subgroup$tables %||% data.frame()),
+    SOURCE_SUBGROUP = .rbind_fill(lapply(result_list, function(x) {
+      effect_measure <- .first_nonmissing(
+        c(x$analysis$effect_measure, x$summary$effect_measure), "Effect"
+      )
+      .user_output_table(
+        .markdown_natural_effect_table(
+          x$source_subgroup$tables %||% data.frame(), effect_measure
+        ),
+        x$analysis$outcome_name
+      )
+    })),
     META_REGRESSION = collect(function(x) x$meta_regression$tables %||% data.frame()),
     LEAVE_ONE_OUT = collect(function(x) x$loo$table %||% data.frame()),
     FUNNEL_TESTS = collect(function(x) x$funnel$table %||% data.frame()),
@@ -3877,23 +4622,57 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
          paste(body, collapse = ""), "</tbody></table></div>")
 }
 
+.html_image_data_uri <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  size <- suppressWarnings(as.numeric(file.info(path)$size))
+  if (!is.finite(size) || size <= 0) return(NA_character_)
+  raw_image <- readBin(path, what = "raw", n = size)
+  paste0("data:image/png;base64,", jsonlite::base64_enc(raw_image))
+}
+
 .write_html_report <- function(results, diagnostics, output_path, run_root) {
+  .require_namespace("jsonlite")
   dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
   sections <- character()
   for (outcome_name in names(results)) {
     res <- results[[outcome_name]]
+    effect_measure <- .first_nonmissing(
+      c(res$analysis$effect_measure, res$summary$effect_measure), "Effect"
+    )
     summary_html <- .html_table(.user_output_table(res$summary %||% data.frame()), 30)
+    source_html <- .html_table(
+      .user_output_table(.markdown_natural_effect_table(
+        res$source_subgroup$tables %||% data.frame(), effect_measure
+      )), 50
+    )
     plot_paths <- res$plots %||% character()
     pngs <- plot_paths[tolower(tools::file_ext(plot_paths)) == "png"]
-    images <- if (length(pngs)) paste0(
-      "<div class='plots'>",
-      paste0("<figure><img src='../", .html_escape(substring(pngs, nchar(run_root) + 2L)),
-             "' alt='Plot ", .html_escape(outcome_name), "'></figure>", collapse = ""),
-      "</div>"
-    ) else ""
+    image_blocks <- lapply(pngs, function(plot_path) {
+      source <- .html_image_data_uri(plot_path)
+      if (is.na(source)) return("")
+      plot_label <- tools::toTitleCase(gsub(
+        "_", " ", tools::file_path_sans_ext(basename(plot_path))
+      ))
+      paste0(
+        "<figure><img loading='lazy' src='", source, "' alt='Plot ",
+        .html_escape(outcome_name), " - ", .html_escape(plot_label), "'>",
+        "<figcaption>", .html_escape(plot_label), "</figcaption></figure>"
+      )
+    })
+    image_blocks <- unlist(image_blocks, use.names = FALSE)
+    image_blocks <- image_blocks[nzchar(image_blocks)]
+    images <- if (length(image_blocks)) paste0(
+      "<div class='plots'>", paste(image_blocks, collapse = ""), "</div>"
+    ) else "<p class='muted'>Plot tidak ditemukan.</p>"
     sections <- c(sections, paste0(
       "<section><h2>", .html_escape(outcome_name), "</h2>",
-      summary_html, images, "</section>"
+      summary_html,
+      if (nrow(res$source_subgroup$tables %||% data.frame())) {
+        paste0("<h3>Source subgroup</h3>", source_html)
+      } else {
+        ""
+      },
+      images, "</section>"
     ))
   }
   diagnostics_html <- .html_table(.user_diagnostics(diagnostics), 200)
@@ -3907,7 +4686,8 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     ".table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:12px}",
     "th{background:#1F4E78;color:white;position:sticky;top:0}th,td{border:1px solid #ddd;padding:7px;text-align:left}",
     "tr:nth-child(even){background:#f3f6fa}.plots{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}",
-    "img{max-width:100%;height:auto;border:1px solid #ddd}.muted{color:#666}</style></head><body><main>",
+    "figure{margin:0}figcaption{font-size:12px;color:#555;margin:6px 0 12px;text-align:center}",
+    "img{display:block;max-width:100%;height:auto;border:1px solid #ddd}.muted{color:#666}</style></head><body><main>",
     "<h1>Auctus MA & NMA Report</h1>",
     "<p>Engine ", .AUCTUS_ENGINE_VERSION, " | Dibuat ", .html_escape(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), "</p>",
     paste(sections, collapse = ""),
@@ -3915,6 +4695,146 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     "</main></body></html>"
   )
   writeLines(html, output_path, useBytes = TRUE)
+  normalizePath(output_path, mustWork = FALSE)
+}
+
+.markdown_escape <- function(x) {
+  x <- ifelse(is.na(x), "", as.character(x))
+  x <- gsub("\\", "\\\\", x, fixed = TRUE)
+  x <- gsub("|", "\\|", x, fixed = TRUE)
+  gsub("[\r\n]+", " ", x)
+}
+
+.markdown_table <- function(dat, max_rows = 100L) {
+  dat <- .user_output_table(dat)
+  if (!is.data.frame(dat) || !nrow(dat) || !ncol(dat)) return("_Tidak ada data._")
+  dat <- dat[seq_len(min(max_rows, nrow(dat))), , drop = FALSE]
+  dat[] <- lapply(dat, function(x) {
+    if (is.list(x)) vapply(x, function(y) paste(y, collapse = ", "), character(1)) else x
+  })
+  header <- paste0("| ", paste(.markdown_escape(names(dat)), collapse = " | "), " |")
+  separator <- paste0("| ", paste(rep("---", ncol(dat)), collapse = " | "), " |")
+  rows <- apply(dat, 1L, function(row) {
+    paste0("| ", paste(.markdown_escape(row), collapse = " | "), " |")
+  })
+  paste(c(header, separator, rows), collapse = "\n")
+}
+
+.markdown_analysis_config <- function(analysis) {
+  keep <- setdiff(names(analysis), c("analysis_id", "outcome_key"))
+  values <- vapply(analysis[keep], function(x) {
+    if (!length(x) || all(is.na(x))) "" else paste(x, collapse = ", ")
+  }, character(1))
+  data.frame(field = keep, value = values, stringsAsFactors = FALSE)
+}
+
+.markdown_natural_effect_table <- function(dat, effect_measure) {
+  if (!is.data.frame(dat) || !nrow(dat)) return(data.frame())
+  if (!all(c("TE", "lower", "upper") %in% names(dat))) return(dat)
+  transform <- if (.ratio_measure(effect_measure)) exp else identity
+  dat$estimate <- transform(dat$TE)
+  dat$ci_low <- transform(dat$lower)
+  dat$ci_high <- transform(dat$upper)
+  dat$effect_measure <- effect_measure
+  dat[, c(
+    intersect(c("subgroup_variable", "subgroup", "omitted_study", "effect_measure",
+                "estimate", "ci_low", "ci_high", "p_value", "k", "tau2",
+                "i2_percent", "test_for_difference_p"), names(dat)),
+    setdiff(names(dat), c(
+      "TE", "seTE", "lower", "upper", "subgroup_variable", "subgroup",
+      "omitted_study", "effect_measure", "estimate", "ci_low", "ci_high",
+      "p_value", "k", "tau2", "i2_percent", "test_for_difference_p"
+    ))
+  ), drop = FALSE]
+}
+
+.write_markdown_report <- function(results, diagnostics, output_path, run_root) {
+  dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+  lines <- c(
+    "# Auctus MA & NMA Report",
+    "",
+    paste0("- Engine: `", .AUCTUS_ENGINE_VERSION, "`"),
+    paste0("- Schema: `", .AUCTUS_SCHEMA_VERSION, "`"),
+    paste0("- Dibuat: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")),
+    "",
+    "## Daftar outcome",
+    "",
+    paste0(seq_along(results), ". [", .markdown_escape(names(results)), "](#",
+           gsub("(^-|-$)", "", gsub("[^a-z0-9]+", "-", tolower(names(results)))), ")"),
+    ""
+  )
+  add_table_section <- function(title, dat, max_rows = 100L) {
+    c(paste0("### ", title), "", .markdown_table(dat, max_rows), "")
+  }
+  for (outcome_name in names(results)) {
+    res <- results[[outcome_name]]
+    effect_measure <- .first_nonmissing(
+      c(res$analysis$effect_measure, res$summary$effect_measure), "Effect"
+    )
+    subgroup_table <- .markdown_natural_effect_table(
+      res$subgroup$tables %||% data.frame(), effect_measure
+    )
+    source_subgroup_table <- .markdown_natural_effect_table(
+      res$source_subgroup$tables %||% data.frame(), effect_measure
+    )
+    loo_table <- .markdown_natural_effect_table(
+      res$loo$table %||% data.frame(), effect_measure
+    )
+    lines <- c(
+      lines,
+      paste0("## ", .markdown_escape(outcome_name)),
+      "",
+      paste0("Status: **", .markdown_escape(res$status %||% "UNKNOWN"), "**"),
+      "",
+      add_table_section("Konfigurasi analisis", .markdown_analysis_config(res$analysis)),
+      add_table_section("Overall result", res$summary %||% data.frame(), 30L),
+      add_table_section("Sensitivity analysis", res$sensitivity %||% data.frame()),
+      add_table_section("Subgroup analysis", subgroup_table),
+      add_table_section("Source subgroup", source_subgroup_table),
+      add_table_section("Meta-regression", res$meta_regression$tables %||% data.frame()),
+      add_table_section("Leave-one-out analysis", loo_table),
+      add_table_section("Publication bias", res$funnel$table %||% data.frame()),
+      add_table_section("NMA ranking", res$ranking %||% data.frame()),
+      add_table_section("NMA node splitting", res$netsplit %||% data.frame()),
+      add_table_section("NMA inconsistency", res$inconsistency %||% data.frame()),
+      add_table_section("Transitivity check", res$transitivity %||% data.frame()),
+      add_table_section("Method decisions", res$method_decisions %||% data.frame())
+    )
+    league <- res$league_table %||% data.frame()
+    if (is.matrix(league)) league <- as.data.frame(league, stringsAsFactors = FALSE)
+    if (is.data.frame(league) && nrow(league)) {
+      league <- cbind(Treatment = rownames(league), league, stringsAsFactors = FALSE)
+      rownames(league) <- NULL
+      lines <- c(lines, add_table_section("NMA league table", league))
+    }
+    pngs <- (res$plots %||% character())[
+      tolower(tools::file_ext(res$plots %||% character())) == "png"
+    ]
+    lines <- c(lines, "### Plot", "")
+    if (length(pngs)) {
+      for (plot_path in pngs) {
+        relative <- substring(normalizePath(plot_path, mustWork = FALSE), nchar(run_root) + 2L)
+        label <- gsub("_", " ", tools::file_path_sans_ext(basename(plot_path)))
+        lines <- c(
+          lines,
+          paste0("#### ", tools::toTitleCase(label)),
+          "",
+          paste0("![", .markdown_escape(outcome_name), " - ",
+                 .markdown_escape(label), "](../", relative, ")"),
+          ""
+        )
+      }
+    } else {
+      lines <- c(lines, "_Tidak ada plot._", "")
+    }
+  }
+  lines <- c(
+    lines,
+    "## Diagnostics",
+    "",
+    .markdown_table(.user_diagnostics(diagnostics), 300L)
+  )
+  writeLines(lines, output_path, useBytes = TRUE)
   normalizePath(output_path, mustWork = FALSE)
 }
 
@@ -3945,6 +4865,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       outcome_name = x$analysis$outcome_name,
       status = x$status,
       analysis_type = x$analysis$analysis_type,
+      forest_mode = x$source_subgroup$forest_mode %||% NA_character_,
       configuration = x$analysis,
       method_decisions = x$method_decisions
     )),
@@ -3959,7 +4880,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 }
 
 .is_v2_workbook <- function(file_path) {
-  .detect_auctus_schema(file_path) %in% c("v2_id", "v22_label")
+  .detect_auctus_schema(file_path) %in% c("v2_id", "v22_label", "v23_label")
 }
 
 .is_legacy_workbook <- function(file_path) {
@@ -3977,13 +4898,13 @@ run_auctus_meta <- function(file_path = file.choose(), output_dir = NULL,
 
   source_file <- file_path
   schema <- .detect_auctus_schema(file_path)
-  if (schema %in% c("v1", "v2_id")) {
-    converted <- file.path(run_root, "00_validation", "converted_v22.xlsx")
+  if (schema %in% c("v1", "v2_id", "v22_label")) {
+    converted <- file.path(run_root, "00_validation", "converted_v23.xlsx")
     dir.create(dirname(converted), recursive = TRUE, showWarnings = FALSE)
     source_file <- convert_legacy_workbook(file_path, converted)
-    message("Template lama dikonversi. Validasi dilanjutkan pada schema 2.2.")
-  } else if (!identical(schema, "v22_label")) {
-    stop("Workbook tidak sesuai template Auctus V1, V2, atau V2.2 yang dikenali.", call. = FALSE)
+    message("Template lama dikonversi. Validasi dilanjutkan pada schema 2.3.")
+  } else if (!identical(schema, "v23_label")) {
+    stop("Workbook tidak sesuai template Auctus V1, V2, V2.2, atau V2.3 yang dikenali.", call. = FALSE)
   }
 
   validation <- validate_auctus_data(source_file, output_dir = run_root, write_workbook = TRUE)
@@ -3991,7 +4912,7 @@ run_auctus_meta <- function(file_path = file.choose(), output_dir = NULL,
   global_error_codes <- c(
     "E003_MISSING_SHEET", "E202_DUPLICATE_OUTCOME_NAME",
     "E203_UNKNOWN_OUTCOME_NAME", "E204_DUPLICATE_STUDY_LABEL",
-    "E300_NO_INCLUDED_ANALYSIS"
+    "E300_NO_ANALYSIS"
   )
   global_errors <- validation$diagnostics$severity == "ERROR" & (
     is.na(validation$diagnostics$outcome_name) |
@@ -4009,7 +4930,7 @@ run_auctus_meta <- function(file_path = file.choose(), output_dir = NULL,
   }
 
   data <- .normalize_workbook_data(validation$workbook)
-  analyses <- data$analyses[data$analyses$include, , drop = FALSE]
+  analyses <- data$analyses
   if (run_mode == "valid_only" && length(validation$error_outcome_names)) {
     bad_outcome_keys <- .normalize_label_key(validation$error_outcome_names)
     analyses <- analyses[!.normalize_label_key(analyses$outcome_name) %in% bad_outcome_keys, , drop = FALSE]
@@ -4077,6 +4998,9 @@ run_auctus_meta <- function(file_path = file.choose(), output_dir = NULL,
     run_mode, id_map
   )
   report <- .write_html_report(results, diagnostics, file.path(report_dir, "report.html"), run_root)
+  report_markdown <- .write_markdown_report(
+    results, diagnostics, file.path(report_dir, "report.md"), run_root
+  )
   run_log <- data.frame(
     started_at = format(started_at, "%Y-%m-%d %H:%M:%S %Z"),
     finished_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
@@ -4100,6 +5024,7 @@ run_auctus_meta <- function(file_path = file.choose(), output_dir = NULL,
       error_log = validation$error_log,
       results_workbook = results_xlsx,
       manifest = manifest, report = report,
+      report_html = report, report_markdown = report_markdown,
       run_log = file.path(log_dir, "run_log.csv"), id_map = id_map_path
     )
   ), class = "auctus_run")
@@ -4115,7 +5040,8 @@ print.auctus_run <- function(x, ...) {
   cat("Status  :", x$status, "\n")
   cat("Berhasil:", success, "analysis | Gagal:", failed, "analysis\n")
   cat("Hasil   :", x$run_root, "\n")
-  cat("Report  :", x$files$report, "\n")
+  cat("HTML    :", x$files$report_html %||% x$files$report, "\n")
+  cat("Markdown:", x$files$report_markdown %||% "Tidak dibuat", "\n")
   cat("============================================================\n")
   invisible(x)
 }
@@ -4123,7 +5049,7 @@ print.auctus_run <- function(x, ...) {
 run_ma_analyses <- function(file_path = file.choose(), output_dir = NULL,
                             run_mode = c("strict", "valid_only"), ...) {
   warning(
-    "run_ma_analyses() dipertahankan untuk kompatibilitas. Gunakan run_auctus_meta() untuk workflow V2.2.",
+    "run_ma_analyses() dipertahankan untuk kompatibilitas. Gunakan run_auctus_meta() untuk workflow V2.3.",
     call. = FALSE
   )
   run_auctus_meta(file_path = file_path, output_dir = output_dir, run_mode = match.arg(run_mode))
@@ -4132,7 +5058,7 @@ run_ma_analyses <- function(file_path = file.choose(), output_dir = NULL,
 run_nma_analyses <- function(file_path = file.choose(), output_dir = NULL,
                              run_mode = c("strict", "valid_only"), ...) {
   warning(
-    "NMA sekarang dirouting melalui analysis_type pada workbook V2.2. Gunakan run_auctus_meta().",
+    "NMA sekarang dirouting melalui analysis_type pada workbook V2.3. Gunakan run_auctus_meta().",
     call. = FALSE
   )
   run_auctus_meta(file_path = file_path, output_dir = output_dir, run_mode = match.arg(run_mode))

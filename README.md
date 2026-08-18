@@ -1,4 +1,4 @@
-# Auctus MA dan NMA Engine V2.2
+# Auctus MA dan NMA Engine V2.3
 
 Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memperbaiki error, dan membaca hasil.
 
@@ -6,10 +6,12 @@ Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memper
 
 1. [Cara paling singkat menjalankan Auctus](#1-cara-paling-singkat-menjalankan-auctus)
 2. [Membuat template baru](#2-membuat-template-baru)
-3. [Prinsip kunci V2.2](#3-prinsip-kunci-v22)
+3. [Prinsip kunci V2.3](#3-prinsip-kunci-v23)
    - [`outcome_name` adalah kunci analisis](#31-outcome_name-adalah-kunci-analisis)
    - [`study_label` adalah kunci studi global](#32-study_label-adalah-kunci-studi-global)
    - [ID internal](#33-id-internal)
+   - [Semua baris yang diisi otomatis aktif](#34-semua-baris-yang-diisi-otomatis-aktif)
+   - [Migrasi workbook lama](#35-migrasi-workbook-lama)
 4. [Mengisi sheet `analyses`](#4-mengisi-sheet-analyses)
    - [Mengapa `timepoint` tidak wajib?](#41-mengapa-timepoint-tidak-wajib)
    - [Mengapa `effect_measure` kondisional?](#42-mengapa-effect_measure-kondisional)
@@ -40,7 +42,8 @@ Manual ini menjelaskan cara mengisi template Excel, menjalankan script R, memper
     - [Pelaporan software dan keputusan metode](#1310-pelaporan-software-dan-keputusan-metode)
 14. [Plot](#14-plot)
 15. [Struktur hasil](#15-struktur-hasil)
-16. [Checklist sebelum run](#16-checklist-sebelum-run)
+16. [Perbedaan dengan engine lama](#16-perbedaan-dengan-engine-lama)
+17. [Checklist sebelum run](#17-checklist-sebelum-run)
 
 ## 1. Cara paling singkat menjalankan Auctus
 
@@ -70,7 +73,7 @@ hasil <- run_auctus_meta(
 Template produksi sudah tersedia sebagai `template dataset MA & NMA.xlsx`. Template baru juga dapat dibuat dari script:
 
 ```r
-create_auctus_template("template_auctus_v22.xlsx")
+create_auctus_template("template_auctus_v23.xlsx")
 ```
 
 Template berisi sheet berikut:
@@ -78,6 +81,7 @@ Template berisi sheet berikut:
 | Sheet | Fungsi |
 |---|---|
 | `PETUNJUK` | Panduan singkat dan legenda warna |
+| `CONTOH_PENGISIAN` | Contoh read-only yang tidak dibaca engine |
 | `analyses` | Satu baris per outcome atau analisis |
 | `study_metadata` | Registry global, satu baris per studi |
 | `arm_data` | Data event/sample atau mean/SD per arm |
@@ -87,7 +91,9 @@ Template berisi sheet berikut:
 
 User tidak perlu membuat `analysis_id`, `study_id`, atau `arm_id`. Engine membuat ID teknis secara otomatis.
 
-## 3. Prinsip kunci V2.2
+Sheet input produksi sengaja kosong. Salin pola pengisian dari `CONTOH_PENGISIAN` ke sheet input yang sesuai. Jangan memasukkan data penelitian ke `CONTOH_PENGISIAN` karena sheet tersebut tidak dibaca engine.
+
+## 3. Prinsip kunci V2.3
 
 ### 3.1 `outcome_name` adalah kunci analisis
 
@@ -134,7 +140,25 @@ Urutan baris tidak memengaruhi ID. User tidak perlu melihat, membuat, atau mempe
 - `analysis_objects.rds`;
 - `04_logs/id_map.csv`.
 
-Workbook input, workbook koreksi, hasil utama, plot, dan report HTML menggunakan `outcome_name` dan `study_label`.
+Workbook input, workbook koreksi, hasil utama, plot, serta report HTML dan Markdown menggunakan `outcome_name` dan `study_label`.
+
+### 3.4 Semua baris yang diisi otomatis aktif
+
+V2.3 tidak mempunyai kolom `include`. Setiap outcome pada `analyses` dan setiap baris yang mulai diisi pada sheet data dianggap aktif. Baris yang seluruh selnya kosong diabaikan. Baris yang baru diisi sebagian menghasilkan error dengan lokasi sel yang perlu dilengkapi.
+
+Cara mengecualikan data dari salinan workbook:
+
+- Untuk mengecualikan satu studi dari satu outcome, hapus baris studi tersebut dari `arm_data`, `effect_data`, atau `diagnostic_data` untuk outcome terkait.
+- Untuk mengecualikan satu outcome, hapus baris data outcome tersebut terlebih dahulu, lalu hapus barisnya dari `analyses`.
+- Untuk menghapus satu studi dari seluruh workbook, hapus semua baris datanya pada seluruh outcome, lalu hapus baris studinya dari `study_metadata` bila tidak lagi dipakai.
+
+Jangan hanya mengosongkan satu sel pada baris yang masih berisi data lain. Engine akan membaca baris tersebut sebagai baris aktif yang belum lengkap.
+
+### 3.5 Migrasi workbook lama
+
+`run_auctus_meta()` mendeteksi V1, V2 berbasis ID, dan V2.2 berbasis label. Workbook lama dikonversi ke salinan V2.3 sebelum divalidasi. File sumber tidak diubah.
+
+Saat workbook lama masih mempunyai kolom `include`, baris `TRUE` dipertahankan, baris `FALSE` dibuang, dan nilai kosong mengikuti perilaku lama sebagai `TRUE`. Sheet `MIGRATION_LOG` pada salinan konversi mencatat jumlah baris yang dibuang dan alasannya. Metadata studi yang tidak lagi dirujuk juga dibuang dari salinan.
 
 ## 4. Mengisi sheet `analyses`
 
@@ -143,7 +167,6 @@ Isi satu baris untuk setiap analisis.
 | Kolom | Wajib | Keterangan |
 |---|---:|---|
 | `outcome_name` | Ya | Nama unik sekaligus kunci analisis |
-| `include` | Ya | `TRUE` untuk dijalankan, `FALSE` untuk disimpan tanpa dianalisis |
 | `analysis_type` | Ya | `pairwise_ma`, `nma`, `proportion_ma`, atau `diagnostic_ma` |
 | `timepoint` | Tidak | Keterangan tambahan saja |
 | `outcome_type` | Ya | `binary`, `continuous`, `proportion`, `mean`, atau `diagnostic` |
@@ -238,7 +261,6 @@ Setiap baris adalah satu arm. Pilih `outcome_name` dan `study_label` dari dropdo
 | `event`, `sample` | Data binary atau proportion |
 | `mean`, `sd`, `sample` | Data continuous atau pooled mean |
 | `median`, `q1`, `q3`, `min`, `max` | Ringkasan untuk konversi mean/SD |
-| `include` | `TRUE` atau `FALSE` |
 | `notes` | Catatan user |
 
 Tidak ada `arm_id`. Kombinasi `outcome_name`, `study_label`, dan `treatment` sudah cukup untuk mengenali arm.
@@ -306,7 +328,6 @@ Reported contrast dari studi multi-arm harus lengkap atau memiliki informasi cov
 | `outcome_name`, `study_label` | Kunci label |
 | `tp`, `fp`, `fn`, `tn` | Tabel diagnostik 2x2 |
 | `threshold` | Cut-off atau threshold |
-| `include` | `TRUE` atau `FALSE` |
 
 Model bivariate Reitsma dan SROC memerlukan tabel 2x2. Sensitivity atau specificity tanpa tabel 2x2 hanya dapat dianalisis secara univariat dan tidak dipakai untuk membentuk bivariate SROC.
 
@@ -497,7 +518,7 @@ Tambahkan bagian berikut hanya bila median, IQR, atau range dikonversi:
 For studies reporting medians with interquartile ranges and/or ranges, means and standard deviations were estimated using an appropriate Quantile Estimation method implemented in the estmeansd package. Because these values were estimated rather than directly reported, the conversion was flagged and a sensitivity analysis excluding converted studies was performed when sufficient data were available.
 ```
 
-Jangan menyebut metode Wan atau Luo kecuali metode tersebut benar-benar dipilih dan tercatat oleh engine. V2.2 menggunakan Quantile Estimation melalui `estmeansd` untuk konversi ini.
+Jangan menyebut metode Wan atau Luo kecuali metode tersebut benar-benar dipilih dan tercatat oleh engine. V2.3 menggunakan Quantile Estimation melalui `estmeansd` untuk konversi ini.
 
 ### 13.5 Single-arm meta-analysis
 
@@ -551,7 +572,7 @@ Leave-one-out analysis was performed when at least three studies were available 
 Potential small-study effects were assessed only when at least ten studies were available. Funnel-plot asymmetry was evaluated using Egger's regression test, and the exact p value was reported.
 ```
 
-V2.2 tidak otomatis menjalankan Begg's test atau trim-and-fill. Jangan memasukkan kedua metode tersebut ke Methods kecuali dilakukan sebagai analisis tambahan di luar engine dan dilaporkan secara terpisah.
+V2.3 tidak otomatis menjalankan Begg's test atau trim-and-fill. Jangan memasukkan kedua metode tersebut ke Methods kecuali dilakukan sebagai analisis tambahan di luar engine dan dilaporkan secara terpisah.
 
 ### 13.8 Network meta-analysis
 
@@ -620,7 +641,22 @@ Nilai alpha atau istilah "statistically significant" tidak ditambahkan otomatis 
 
 ## 14. Plot
 
-Setiap plot dibuat sebagai PNG 300 dpi dan PDF vector. Ukuran menyesuaikan jumlah studi dan panjang label, sedangkan analisis besar dapat dipaginasi.
+Setiap plot dibuat sebagai PNG 300 dpi dan PDF vector. Forest, subgroup, leave-one-out, dan bubble plot memakai bahasa visual engine V1: latar putih, garis dan marker utama hitam, pooled diamond hitam, serta overall reference merah pada leave-one-out. Model statistik dan data yang diplot tetap berasal dari pipeline V2.3.
+
+Lebar dan tinggi dihitung dari jumlah studi, jumlah subgroup, panjang `study_label`, panjang nama treatment, dan jumlah subkolom. Nama treatment ditampilkan penuh tanpa singkatan. Ruang grup arm dan ukuran font dihitung secara dinamis agar header, nilai effect, confidence interval, serta bobot tidak saling bertabrakan.
+
+Forest pairwise memakai kolom klinis ringkas dan tidak lagi menampilkan TE/log effect atau SE yang redundant:
+
+- raw binary OR atau RR: `Study`, lalu grup bernama treatment aktual dengan subkolom `Event` dan `Total` untuk masing-masing arm;
+- raw continuous MD atau SMD: `Study`, lalu grup bernama treatment aktual dengan subkolom `Mean`, `SD`, dan `Total` untuk masing-masing arm;
+- reported-only atau mixed: hanya subkolom `Total` untuk treatment dan reference. Event, mean, SD, log effect, dan SE tidak ditampilkan;
+- kolom kanan: effect pada skala natural, 95% CI, dan random-effects weight.
+
+Pada forest reported-only atau mixed, studi dibagi menjadi blok `Adjusted`, `Crude`, dan `Raw-derived` sesuai sumber estimate yang benar-benar terpilih untuk model utama. Setiap blok yang dapat dipool menampilkan subtotal dan heterogeneity. Pooled overall tetap ditampilkan, disertai test for source differences bila terdapat lebih dari satu source type. Jika sample reported tidak tersedia, sel studi ditampilkan sebagai `NR`. Total peserta tidak dibuat dari penjumlahan parsial.
+
+Pada subgroup forest, subgroup klinis dari kolom `subgroup_` tetap menjadi blok utama. Source estimate ditampilkan sebagai kolom agar tidak membentuk nested subgroup yang sulit dibaca.
+
+Subgroup forest menampilkan studi individual, pooled result setiap subgroup, heterogeneity per subgroup, pooled result overall, dan test for subgroup differences. Leave-one-out menampilkan estimate setelah setiap studi dikeluarkan beserta 95% CI dan garis overall. Bubble plot menampilkan ukuran bubble berdasarkan inverse variance, fitted line, confidence band, nilai R2, dan p value moderator.
 
 Output meliputi sesuai kelayakan data:
 
@@ -634,7 +670,7 @@ Output meliputi sesuai kelayakan data:
 - network graph, league table, ranking, inconsistency, dan node splitting;
 - paired sensitivity/specificity forest, SROC, dan Deeks plot.
 
-Label `Favours` dihitung dari orientasi treatment dan `outcome_direction`, bukan ditulis tetap.
+Header arm dan label `Favours` memakai nama treatment canonical dari workbook, bukan teks `Intervention` atau `Control` yang ditulis tetap. Untuk `lower_better`, sisi effect lebih kecil diberi `Favours <non-reference>` dan sisi sebaliknya `Favours <reference>`. Untuk `higher_better`, kedua arah tersebut dibalik. Untuk `neutral`, label menjadi `Lower effect` dan `Higher effect` tanpa klaim treatment lebih baik.
 
 ## 15. Struktur hasil
 
@@ -651,7 +687,8 @@ auctus_results/<nama_file>_<timestamp>/
 |   |-- *.png
 |   `-- *.pdf
 |-- 03_report/
-|   `-- report.html
+|   |-- report.html
+|   `-- report.md
 `-- 04_logs/
     |-- run_log.csv
     `-- id_map.csv
@@ -664,9 +701,43 @@ names(hasil$analyses)
 hasil$analyses[["Mortality at 30 days"]]
 ```
 
-`results.xlsx` dan report HTML tidak menampilkan ID internal.
+`report.html` bersifat self-contained. Gambar PNG ditanam langsung ke dalam file HTML agar dapat dibuka melalui `file://` pada Safari, Chrome, atau browser lain tanpa bergantung pada izin membaca folder lokal. Karena itu, ukuran file HTML dapat lebih besar daripada versi sebelumnya.
 
-## 16. Checklist sebelum run
+`report.md` mengikuti struktur laporan engine lama dalam format Markdown yang lebih mudah direvisi. Isinya mencakup konfigurasi analisis, overall result, sensitivity analysis, subgroup klinis, source subgroup, meta-regression, leave-one-out, publication bias, hasil khusus NMA, keputusan metode, seluruh plot PNG, dan diagnostics. Link plot bersifat relatif sehingga folder hasil dapat dipindahkan sebagai satu paket.
+
+`results.xlsx` mempunyai sheet `SOURCE_SUBGROUP` untuk ringkasan adjusted, crude, dan raw-derived pada outcome reported atau mixed. Mode forest `raw_atomic` atau `reported_total_only` dicatat pada `METHOD_DECISIONS` dan `manifest.json`.
+
+Jika `output_dir` tidak diisi, satu kali pemanggilan `run_auctus_meta()` membuat satu folder run dengan timestamp:
+
+```text
+auctus_results/<nama_workbook>_YYYYMMDD_HHMMSS/
+```
+
+Semua analisis dalam workbook masuk ke folder run yang sama. Setiap `outcome_name` mempunyai subfolder sendiri di `02_plots`, menggunakan slug outcome dan delapan karakter hash, tanpa timestamp tambahan. Jadi timestamp membedakan run, sedangkan slug dan hash membedakan analisis.
+
+Jika `output_dir` diisi manual, lokasi tersebut dipakai persis dan timestamp tidak ditambahkan. Ini sebabnya generator contoh memakai folder tetap `dummy_pairwise_OR_MD_results`.
+
+`results.xlsx`, report HTML, dan report Markdown tidak menampilkan ID internal.
+
+## 16. Perbedaan dengan engine lama
+
+| Aspek | Engine lama | Engine V2.3 |
+|---|---|---|
+| Menjalankan analisis | Fungsi lama dengan struktur sheet terpisah | Satu entry point `run_auctus_meta()` untuk MA dan NMA |
+| Instalasi package | Otomatis saat fungsi analisis dijalankan | Tetap otomatis saat `run_auctus_meta()` dijalankan, tetapi `Source` saja tidak mengubah session |
+| Kunci data | ID dan pengulangan data lebih banyak | User hanya menyamakan `outcome_name` dan `study_label`; ID teknis dibuat engine |
+| Studi multi-arm | User dapat perlu membuat seluruh pairwise row | User memasukkan satu baris per arm |
+| Menonaktifkan baris | Menggunakan flag `include` | Tidak ada flag; hapus seluruh baris dari salinan workbook |
+| Contoh template | Dapat bercampur dengan area input | Contoh dipisahkan pada `CONTOH_PENGISIAN` read-only |
+| Validasi | Pesan console lebih umum | Workbook koreksi, warna sel, hyperlink, kode error, pesan, dan saran |
+| Forest pairwise | Kolom log effect dan SE dapat redundant | Kolom arm atomik, treatment dinamis, total-only untuk reported effect, dan label `Favours` dinamis |
+| Mixed estimate | Tampilan sumber terbatas | Blok Adjusted, Crude, dan Raw-derived serta `SOURCE_SUBGROUP` |
+| Report | Markdown bergaya engine lama | Markdown dipertahankan dan ditambah HTML self-contained |
+| Reproducibility | Informasi run lebih terbatas | Manifest, input hash, package version, method decisions, ID map, dan run log |
+
+Perubahan hasil numerik dapat terjadi bila V2.3 memperbaiki orientasi contrast, rare-event handling, multi-arm correlation, pemilihan satu estimate per studi, atau metode pooling. Periksa `METHOD_DECISIONS`, sensitivity analysis, dan regression notes sebelum membandingkan angka dengan output lama.
+
+## 17. Checklist sebelum run
 
 - [ ] Setiap `outcome_name` pada `analyses` unik.
 - [ ] Setiap `study_label` pada `study_metadata` unik secara global.
@@ -680,3 +751,4 @@ hasil$analyses[["Mortality at 30 days"]]
 - [ ] Reported contrast multi-arm lengkap.
 - [ ] Moderator dan subgroup benar-benar merupakan atribut studi global.
 - [ ] Semua sel merah pada workbook koreksi telah diperbaiki.
+- [ ] Tidak ada baris setengah terisi. Hapus seluruh baris bila data memang ingin dikecualikan.
