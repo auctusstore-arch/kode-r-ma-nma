@@ -1304,31 +1304,26 @@ print.auctus_dependency_check <- function(x, ...) {
   data.frame(
     Bagian = c(
       "Mulai", "Langkah 1", "Langkah 2", "Langkah 3", "Kunci outcome",
-      "Kunci studi", "Studi multi-arm", "Zero event", "Reported effect", "Warna biru",
+      "Kunci studi", "Studi multi-arm", "Zero event", "Reported effect",
       "Semua baris aktif", "Mengecualikan data", "Warna merah", "Warna kuning",
-      "Warna biru muda", "Contoh", "Forest raw", "Forest reported/mixed",
-      "Arah Favours", "Bantuan"
+      "Contoh", "Forest plot raw", "Forest plot reported/mixed",
+      "Arah Favours", "Cara pakai kode"
     ),
     Penjelasan = c(
       paste0("Template Auctus MA dan NMA V", .AUCTUS_SCHEMA_VERSION),
-      "Isi satu baris pada analyses untuk setiap analisis yang ingin dijalankan.",
-      "Isi study_metadata satu kali per study_label untuk seluruh workbook.",
-      "Isi arm_data, effect_data, atau diagnostic_data sesuai sumber data.",
-      "outcome_name wajib unik dan menjadi kunci penggabungan analisis. Pilih dari dropdown pada sheet data.",
-      "study_label wajib unik secara global. Gunakan Smith 2024a, Smith 2024b, atau nama cohort bila diperlukan.",
-      paste0(
-        "Masukkan satu baris per arm. Studi 3 arm cukup 3 baris, bukan 3 contrast manual. ",
-        "Tidak perlu ID teknis; arm dikenali dari outcome_name, study_label, dan treatment."
-      ),
+      "Pada sheet \"analyses\", isi satu baris untuk setiap satu outcome yang ingin dianalisis.",
+      "Isi sheet \"study_metadata\" satu baris per studi. List studi di sheet \"study_metadata\" berlaku untuk seluruh sheet.",
+      "Isi sheet \"arm_data\", \"effect_data\", atau \"diagnostic_data\" sesuai sumber data dan analisis yang direncanakan.",
+      "outcome_name wajib unik dan menjadi kunci penggabungan analisis. outcome_name yang sama = dianalisis menjadi satu hasil.",
+      "study_label wajib unik. Gunakan huruf di belakang seperti \"Smith 2024a, Smith 2024b\", bila ada yang sama nama dan tahunnya.",
+      "Di \"arm_data\", masukkan satu baris per arm/kelompok. Studi 3 arm cukup 3 baris.",
       "event boleh 0. sample harus lebih besar dari 0.",
       "Masukkan OR/RR/HR pada skala natural dan isi CI atau SE.",
-      "Sel input user menggunakan font biru.",
       "Setiap baris yang mulai diisi dianggap aktif dan wajib lengkap.",
       "Hapus baris outcome atau data dari salinan workbook bila tidak ingin dianalisis.",
       "Sel merah pada validated_input.xlsx wajib diperbaiki.",
       "Sel kuning adalah warning yang harus dibaca sebelum interpretasi.",
-      "Sel biru muda adalah informasi tentang keputusan atau eksklusi yang tidak memblokir analisis.",
-      "Lihat CONTOH_PENGISIAN. Sheet read-only tersebut tidak dibaca engine; salin pola ke sheet input.",
+      "Lihat CONTOH_PENGISIAN. Sheet read-only tersebut tidak dibaca kode; salin pola ke sheet input.",
       "Binary menampilkan Event dan Total per treatment. Continuous menampilkan Mean, SD, dan Total.",
       paste0(
         "Forest reported atau mixed hanya menampilkan Total per treatment dan membagi studi menjadi ",
@@ -1338,7 +1333,7 @@ print.auctus_dependency_check <- function(x, ...) {
         "Nama treatment pada header dan label Favours dibuat dinamis. lower_better, higher_better, ",
         "atau neutral harus dipilih berdasarkan arti klinis outcome."
       ),
-      "Jalankan source('meta_nma_engine.R'), lalu hasil <- run_auctus_meta()."
+      "Jalankan source('meta_nma_engine.R'), lalu run_auctus_meta()."
     ),
     stringsAsFactors = FALSE
   )
@@ -1412,48 +1407,70 @@ print.auctus_dependency_check <- function(x, ...) {
   dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
   wb <- openxlsx::createWorkbook(creator = "Auctus")
 
+  dark_green <- "#274E13"
+  tab_green <- "#38761D"
+  pale_green <- "#D9EAD3"
   navy <- "#1F4E78"
-  blue <- "#0070C0"
   pale_blue <- "#D9EAF7"
   pale_yellow <- "#FFF2CC"
   light_gray <- "#E7E6E6"
   white <- "#FFFFFF"
   header_style <- openxlsx::createStyle(
-    fontName = "Arial", fontSize = 10, fontColour = white, fgFill = navy,
+    fontName = "Arial", fontSize = 10, fontColour = white, fgFill = dark_green,
     textDecoration = "bold", halign = "center", valign = "center",
     border = "bottom", borderColour = "#B4C6E7", wrapText = TRUE
   )
-  input_style <- openxlsx::createStyle(fontName = "Arial", fontSize = 10, fontColour = blue)
+  instruction_header_style <- openxlsx::createStyle(
+    fontName = "Arial", fontSize = 10, fontColour = white, fgFill = dark_green,
+    halign = "left", valign = "center"
+  )
+  input_style <- openxlsx::createStyle(
+    fontName = "Arial", fontSize = 10, fontColour = "#000000", valign = "center"
+  )
   body_style <- openxlsx::createStyle(fontName = "Arial", fontSize = 10, valign = "top")
-  title_style <- openxlsx::createStyle(
+  instruction_title_style <- openxlsx::createStyle(
+    fontName = "Arial", fontSize = 18, textDecoration = "bold", fontColour = dark_green
+  )
+  example_title_style <- openxlsx::createStyle(
     fontName = "Arial", fontSize = 18, textDecoration = "bold", fontColour = navy
   )
-  section_style <- openxlsx::createStyle(
+  instruction_section_style <- openxlsx::createStyle(
+    fontName = "Arial", fontSize = 10, textDecoration = "bold", fgFill = pale_green,
+    valign = "top", wrapText = TRUE
+  )
+  example_section_style <- openxlsx::createStyle(
     fontName = "Arial", fontSize = 10, textDecoration = "bold", fgFill = pale_blue,
     valign = "top", wrapText = TRUE
   )
+  instruction_body_style <- openxlsx::createStyle(
+    fontName = "Arial", fontSize = 10, fontColour = "#000000", valign = "center"
+  )
 
   if (write_instructions) {
-    openxlsx::addWorksheet(wb, "PETUNJUK", gridLines = FALSE, tabColour = navy)
-    openxlsx::writeData(wb, "PETUNJUK", "AUCTUS V2.3", startRow = 1, startCol = 1)
-    openxlsx::addStyle(wb, "PETUNJUK", title_style, rows = 1, cols = 1)
-    openxlsx::writeData(wb, "PETUNJUK", paste("Schema version", .AUCTUS_SCHEMA_VERSION), startRow = 2, startCol = 1)
+    openxlsx::addWorksheet(wb, "PETUNJUK", gridLines = FALSE, tabColour = tab_green)
+    openxlsx::writeData(wb, "PETUNJUK", "DATASET MA NMA AUCTUS V2.3", startRow = 1, startCol = 1)
+    openxlsx::addStyle(wb, "PETUNJUK", instruction_title_style, rows = 1, cols = 1)
     instructions <- .auctus_instructions()
     openxlsx::writeDataTable(wb, "PETUNJUK", instructions, startRow = 4,
-                             tableStyle = "TableStyleMedium2", withFilter = FALSE)
-    openxlsx::addStyle(wb, "PETUNJUK", section_style, rows = 5:(4 + nrow(instructions)), cols = 1,
+                             tableStyle = "TableStyleMedium4", withFilter = FALSE,
+                             tableName = "petunjuk")
+    openxlsx::addStyle(wb, "PETUNJUK", instruction_header_style, rows = 4, cols = 1:2,
+                       gridExpand = TRUE, stack = TRUE)
+    openxlsx::addStyle(wb, "PETUNJUK", instruction_section_style, rows = 5:(4 + nrow(instructions)), cols = 1,
+                       gridExpand = TRUE, stack = TRUE)
+    openxlsx::addStyle(wb, "PETUNJUK", instruction_body_style, rows = 5:(4 + nrow(instructions)), cols = 2,
                        gridExpand = TRUE, stack = TRUE)
     openxlsx::setColWidths(wb, "PETUNJUK", cols = 1, widths = 24)
     openxlsx::setColWidths(wb, "PETUNJUK", cols = 2, widths = 95)
-    openxlsx::setRowHeights(wb, "PETUNJUK", rows = 5:(4 + nrow(instructions)), heights = 34)
+    openxlsx::setRowHeights(wb, "PETUNJUK", rows = 5:(4 + nrow(instructions)), heights = 33.75)
     openxlsx::freezePane(wb, "PETUNJUK", firstActiveRow = 5)
   }
 
   if (!is.null(example_data)) {
-    openxlsx::addWorksheet(wb, "CONTOH_PENGISIAN", gridLines = FALSE, tabColour = "#70AD47")
+    openxlsx::addWorksheet(wb, "CONTOH_PENGISIAN", gridLines = FALSE, tabColour = tab_green)
     openxlsx::writeData(wb, "CONTOH_PENGISIAN", "CONTOH PENGISIAN, TIDAK DIBACA ENGINE",
                         startRow = 1, startCol = 1)
-    openxlsx::addStyle(wb, "CONTOH_PENGISIAN", title_style, rows = 1, cols = 1)
+    openxlsx::addStyle(wb, "CONTOH_PENGISIAN", example_title_style, rows = 1, cols = 1)
     row <- 3L
     for (sheet in names(.sheet_specs)) {
       dat <- example_data[[sheet]] %||% .empty_df(.sheet_specs[[sheet]])
@@ -1461,7 +1478,7 @@ print.auctus_dependency_check <- function(x, ...) {
       dat <- dat[, c(.sheet_specs[[sheet]], setdiff(names(dat), .sheet_specs[[sheet]])), drop = FALSE]
       openxlsx::writeData(wb, "CONTOH_PENGISIAN", paste0("Contoh sheet: ", sheet),
                           startRow = row, startCol = 1)
-      openxlsx::addStyle(wb, "CONTOH_PENGISIAN", section_style, rows = row,
+      openxlsx::addStyle(wb, "CONTOH_PENGISIAN", example_section_style, rows = row,
                          cols = seq_len(max(1L, ncol(dat))), gridExpand = TRUE)
       row <- row + 1L
       openxlsx::writeDataTable(
@@ -1495,14 +1512,14 @@ print.auctus_dependency_check <- function(x, ...) {
   }
 
   for (sheet in names(.sheet_specs)) {
-    openxlsx::addWorksheet(wb, sheet, gridLines = FALSE, tabColour = if (sheet == "analyses") navy else blue)
+    openxlsx::addWorksheet(wb, sheet, gridLines = FALSE, tabColour = tab_green)
     dat <- data[[sheet]] %||% .empty_df(.sheet_specs[[sheet]])
     dat <- .ensure_columns(dat, .sheet_specs[[sheet]])
     extra <- setdiff(names(dat), .sheet_specs[[sheet]])
     dat <- dat[, c(.sheet_specs[[sheet]], extra), drop = FALSE]
     openxlsx::writeDataTable(
       wb, sheet, dat, startRow = 1, startCol = 1,
-      tableStyle = "TableStyleMedium2", withFilter = TRUE,
+      tableStyle = "TableStyleMedium4", withFilter = TRUE,
       tableName = paste0("tbl_", sheet)
     )
     openxlsx::addStyle(wb, sheet, header_style, rows = 1, cols = seq_len(ncol(dat)),
@@ -1515,7 +1532,7 @@ print.auctus_dependency_check <- function(x, ...) {
     widths <- pmin(34, pmax(12, nchar(names(dat)) + 3))
     widths[names(dat) %in% c("notes", "adjustment_variables", "study_label", "outcome_name")] <- 28
     openxlsx::setColWidths(wb, sheet, cols = seq_len(ncol(dat)), widths = widths)
-    openxlsx::setRowHeights(wb, sheet, rows = 1, heights = 32)
+    openxlsx::setRowHeights(wb, sheet, rows = 1, heights = 31.5)
     if (nrow(dat)) openxlsx::setRowHeights(wb, sheet, rows = 2:(nrow(dat) + 1L), heights = 24)
   }
 

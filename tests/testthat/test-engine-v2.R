@@ -83,6 +83,25 @@ testthat::test_that("template contains the V2.3 schema without include flags", {
   )
   template_analyses <- readxl::read_excel(path, sheet = "analyses")
   testthat::expect_true(all(is.na(template_analyses$timepoint)))
+  petunjuk <- readxl::read_excel(
+    path, sheet = "PETUNJUK", range = "A1:B22", col_names = FALSE
+  )
+  testthat::expect_identical(petunjuk[[1L]][[1L]], "DATASET MA NMA AUCTUS V2.3")
+  testthat::expect_true(is.na(petunjuk[[1L]][[2L]]))
+  testthat::expect_identical(
+    petunjuk[[1L]][5:22],
+    c(
+      "Mulai", "Langkah 1", "Langkah 2", "Langkah 3", "Kunci outcome",
+      "Kunci studi", "Studi multi-arm", "Zero event", "Reported effect",
+      "Semua baris aktif", "Mengecualikan data", "Warna merah", "Warna kuning",
+      "Contoh", "Forest plot raw", "Forest plot reported/mixed",
+      "Arah Favours", "Cara pakai kode"
+    )
+  )
+  testthat::expect_identical(
+    petunjuk[[2L]][[22L]],
+    "Jalankan source('meta_nma_engine.R'), lalu run_auctus_meta()."
+  )
   template_arms <- readxl::read_excel(path, sheet = "arm_data")
   for (technical_id in c("analysis_id", "study_id", "arm_id")) {
     testthat::expect_false(technical_id %in% names(template_analyses))
@@ -120,6 +139,16 @@ testthat::test_that("template contains the V2.3 schema without include flags", {
   testthat::expect_equal(lengths(regmatches(data_sheet_xml, gregexpr("AUCTUS_OUTCOMES", data_sheet_xml))), 3L)
   testthat::expect_equal(lengths(regmatches(data_sheet_xml, gregexpr("AUCTUS_STUDIES", data_sheet_xml))), 3L)
   testthat::expect_true(length(list.files(file.path(extracted, "xl"), pattern = "^comments.*xml$")) >= 5)
+  styles_xml <- paste(readLines(file.path(extracted, "xl", "styles.xml"), warn = FALSE), collapse = "")
+  testthat::expect_match(styles_xml, "FF274E13")
+  testthat::expect_match(styles_xml, "FFD9EAD3")
+  worksheet_xml <- paste(unlist(lapply(
+    file.path(extracted, "xl", "worksheets", paste0("sheet", 1:7, ".xml")),
+    readLines, warn = FALSE
+  )), collapse = "")
+  testthat::expect_gte(
+    lengths(regmatches(worksheet_xml, gregexpr("FF38761D", worksheet_xml))), 7L
+  )
 })
 
 testthat::test_that("timepoint is optional and blank titles remain clean", {
