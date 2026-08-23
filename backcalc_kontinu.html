@@ -1,0 +1,1061 @@
+<title>Back-calculate SD dan Baris Head-to-Head</title>
+<style>
+  :root {
+    --ground:      #EDF0F3;
+    --surface:     #FAFBFC;
+    --surface-2:   #F1F4F7;
+    --ink:         #131A22;
+    --ink-2:       #56626F;
+    --ink-3:       #808C99;
+    --line:        #D2D9E0;
+    --line-soft:   #E2E7EC;
+    --accent:      #1D4E89;
+    --accent-soft: #DDE7F3;
+    --derived:     #8A2F5F;
+    --derived-soft:#F3DEE9;
+    --warn:        #8A5A00;
+    --warn-soft:   #F6E9CE;
+    --crit:        #A32432;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono:  ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+    --r: 3px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0E1319;
+      --surface:     #161C23;
+      --surface-2:   #1D242C;
+      --ink:         #E3E9F0;
+      --ink-2:       #97A4B2;
+      --ink-3:       #6E7C8B;
+      --line:        #29323C;
+      --line-soft:   #212932;
+      --accent:      #74AAE8;
+      --accent-soft: #1B2C42;
+      --derived:     #E58AB8;
+      --derived-soft:#3A2030;
+      --warn:        #D9A441;
+      --warn-soft:   #33280F;
+      --crit:        #E8697A;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1319;
+    --surface:     #161C23;
+    --surface-2:   #1D242C;
+    --ink:         #E3E9F0;
+    --ink-2:       #97A4B2;
+    --ink-3:       #6E7C8B;
+    --line:        #29323C;
+    --line-soft:   #212932;
+    --accent:      #74AAE8;
+    --accent-soft: #1B2C42;
+    --derived:     #E58AB8;
+    --derived-soft:#3A2030;
+    --warn:        #D9A441;
+    --warn-soft:   #33280F;
+    --crit:        #E8697A;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0 20px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 940px; margin: 0 auto; }
+
+  /* ---------- header ---------- */
+
+  header { padding: 52px 0 28px; border-bottom: 1px solid var(--line); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(30px, 5vw, 42px);
+    line-height: 1.1;
+    letter-spacing: -.015em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-2);
+    font-size: 16px;
+  }
+
+  /* ---------- generic blocks ---------- */
+
+  section { padding-top: 34px; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0 0 6px;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 0 0 10px;
+  }
+
+  .note { color: var(--ink-2); font-size: 14px; margin: 0 0 18px; max-width: 68ch; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 20px;
+  }
+
+  /* ---------- tabs ---------- */
+
+  .tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+
+  .tab {
+    appearance: none;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 550;
+    padding: 9px 14px;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- controls ---------- */
+
+  textarea, input[type="text"], input[type="number"] {
+    width: 100%;
+    background: var(--surface-2);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 9px 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  textarea { min-height: 168px; resize: vertical; white-space: pre; }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+
+  button.act {
+    appearance: none;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 550;
+    padding: 8px 15px;
+    border-radius: var(--r);
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.act:hover { border-color: var(--ink-3); }
+  button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  button.act.primary:hover { filter: brightness(1.1); }
+
+  .hint { font-size: 13px; color: var(--ink-3); margin: 8px 0 0; }
+
+  /* ---------- manual form ---------- */
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--ink-2); font-weight: 550; }
+
+  .arm-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 1.6fr) repeat(4, minmax(72px, 1fr)) auto;
+    gap: 8px;
+    align-items: end;
+    margin-bottom: 8px;
+  }
+  .arm-row .kill {
+    appearance: none; background: none; border: 1px solid var(--line); border-radius: var(--r);
+    color: var(--ink-3); cursor: pointer; font: inherit; padding: 8px 10px; line-height: 1;
+  }
+  .arm-row .kill:hover { color: var(--crit); border-color: var(--crit); }
+  .sep { border: 0; border-top: 1px solid var(--line-soft); margin: 18px 0; }
+
+  /* ---------- summary ---------- */
+
+  .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line);
+    border-radius: var(--r);
+    padding: 10px 16px 11px;
+    min-width: 132px;
+  }
+  .stat.on-accent  { border-left-color: var(--accent); }
+  .stat.on-derived { border-left-color: var(--derived); }
+  .stat.on-warn    { border-left-color: var(--warn); }
+  .stat .k { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .stat .v { font-family: var(--serif); font-size: 27px; line-height: 1.1; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  /* ---------- result card ---------- */
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .card > .head {
+    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline;
+    padding: 13px 16px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .card .title { font-weight: 650; font-size: 15px; }
+  .card .sub { font-size: 13px; color: var(--ink-2); font-family: var(--mono); }
+  .card > .body { padding: 16px; }
+
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 2px;
+  }
+  .chip.derived { background: var(--derived-soft); color: var(--derived); }
+  .chip.fix     { background: var(--accent-soft);  color: var(--accent); }
+  .chip.warn    { background: var(--warn-soft);    color: var(--warn); }
+
+  /* ---------- forest strip ---------- */
+
+  .forest { display: grid; grid-template-columns: minmax(120px, 210px) 1fr; gap: 4px 14px; align-items: center; margin: 4px 0 2px; }
+  .forest .fl { font-size: 12.5px; color: var(--ink-2); text-align: right; overflow-wrap: anywhere; }
+  .forest .fl b { color: var(--ink); font-weight: 600; }
+  .track { position: relative; height: 22px; }
+  .track .zero { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .track .bar { position: absolute; top: 50%; height: 1.5px; transform: translateY(-50%); background: currentColor; }
+  .track .cap { position: absolute; top: 50%; width: 1.5px; height: 9px; transform: translate(-50%, -50%); background: currentColor; }
+  .track .dot { position: absolute; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%) rotate(45deg); background: currentColor; }
+  .track.obs { color: var(--accent); }
+  .track.der { color: var(--derived); }
+  .axis { position: relative; height: 15px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+  .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+  /* ---------- data table ---------- */
+
+  .scroll { overflow-x: auto; margin: 14px 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line);
+  }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tr.derived-row td { color: var(--derived); font-weight: 600; }
+
+  /* ---------- code out ---------- */
+
+  pre.out {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px 13px;
+    margin: 12px 0 0;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    white-space: pre;
+    tab-size: 2;
+  }
+
+  .flag {
+    display: flex; gap: 9px; align-items: flex-start;
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    border-radius: 0 var(--r) var(--r) 0;
+    padding: 9px 13px;
+    margin-top: 12px;
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+  .flag .mk { color: var(--warn); font-weight: 700; font-family: var(--mono); line-height: 1.5; }
+
+  .empty { color: var(--ink-3); font-size: 14px; padding: 22px 0; text-align: center; font-style: italic; }
+
+  /* ---------- method ---------- */
+
+  details { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 34px; }
+  summary { cursor: pointer; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  details .inner { padding-top: 12px; max-width: 70ch; color: var(--ink-2); font-size: 14px; }
+  details .inner p { margin: 0 0 12px; }
+  details .inner code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 2px; color: var(--ink); }
+  details .inner strong { color: var(--ink); }
+
+  .hidden { display: none; }
+
+  @media (max-width: 640px) {
+    .arm-row { grid-template-columns: 1fr 1fr; }
+    .forest { grid-template-columns: 1fr; }
+    .forest .fl { text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">meta_nma_engine.R &middot; sheet kontinu</p>
+  <h1>Back-calculate SD dan baris head-to-head</h1>
+  <p class="lede">
+    <code>netmeta()</code> menolak studi multi-lengan yang tidak lengkap pasangan perbandingannya.
+    Tool ini membaca sheet kontinu Anda, menghitung SD tiap lengan dari CI yang dilaporkan,
+    lalu menyusun baris perbandingan antar-dosis yang hilang beserta baris yang CI-nya masih kosong.
+  </p>
+</header>
+
+<section>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-bulk"   aria-selected="true"  aria-controls="pane-bulk">Tempel sheet</button>
+    <button class="tab" role="tab" id="tab-manual" aria-selected="false" aria-controls="pane-manual">Hitung satu studi</button>
+  </div>
+
+  <!-- ============ BULK ============ -->
+  <div class="panel" id="pane-bulk" role="tabpanel" aria-labelledby="tab-bulk">
+    <h3>Data sheet kontinu</h3>
+    <p class="note">
+      Salin seluruh sheet termasuk baris header, lalu tempel di sini. Format CSV maupun tempelan
+      langsung dari Google Sheets (tab-separated) sama-sama diterima.
+    </p>
+    <textarea id="raw" spellcheck="false" aria-label="Data sheet kontinu"
+      placeholder="study,outcome_name,effect_measure,treat1,treat2,nma_reference,nma_small_values,md,lowci,highci,mean1,sd1,sample1,mean2,sd2,sample2&#10;..."></textarea>
+    <div class="btn-row">
+      <button class="act primary" id="run">Hitung</button>
+      <button class="act" id="demo">Muat contoh</button>
+      <button class="act" id="clear">Bersihkan</button>
+      <label style="flex-direction:row; align-items:center; gap:7px; font-size:13px; color:var(--ink-2); margin-left:4px;">
+        <input type="checkbox" id="withMeans" style="width:auto;">
+        Ikut isi kolom mean/SD
+      </label>
+    </div>
+    <p class="hint" id="parseNote"></p>
+  </div>
+
+  <!-- ============ MANUAL ============ -->
+  <div class="panel hidden" id="pane-manual" role="tabpanel" aria-labelledby="tab-manual">
+    <h3>Identitas</h3>
+    <div class="field-grid">
+      <label>Studi <input type="text" id="m-study" value="haeberlein2022_EMERGE"></label>
+      <label>Outcome <input type="text" id="m-outcome" value="CDR-SB"></label>
+      <label>Effect measure <input type="text" id="m-measure" value="MD"></label>
+      <label>Komparator <input type="text" id="m-ref" value="Placebo"></label>
+      <label>n komparator <input type="number" id="m-refn" value="548"></label>
+    </div>
+
+    <hr class="sep">
+
+    <h3>Lengan aktif (kontras terhadap komparator)</h3>
+    <div id="armHost"></div>
+    <div class="btn-row">
+      <button class="act" id="addArm">Tambah lengan</button>
+      <button class="act primary" id="runManual">Hitung</button>
+    </div>
+    <p class="hint">Isi <b>md + lowci + highci</b>, atau kosongkan CI dan isi <b>SD</b> lengan langsung.</p>
+  </div>
+</section>
+
+<section id="results"></section>
+
+<details>
+  <summary>Cara hitungnya</summary>
+  <div class="inner">
+    <p>
+      <strong>1. SD tiap lengan dari CI.</strong> Kontras yang dilaporkan memberi
+      <code>se = (highci - lowci) / (2 &times; 1.96)</code>. Karena
+      <code>se&sup2; = sd&sup2;(1/n&#8321; + 1/n&#8322;)</code>, maka
+      <code>sd = se / &radic;(1/n&#8321; + 1/n&#8322;)</code>. Kalau CI kosong tapi SD tiap lengan ada,
+      SD gabungan dihitung langsung dengan rumus pooled biasa.
+    </p>
+    <p>
+      <strong>2. SD bersama satu studi.</strong> Tiap kontras menghasilkan satu taksiran SD.
+      Taksiran itu digabung dengan bobot derajat bebas:
+      <code>sd&#7580; = &radic;(&Sigma; df&#7522;&middot;sd&#7522;&sup2; / &Sigma; df&#7522;)</code>, <code>df&#7522; = n&#8321;&#7522; + n&#8322;&#7522; - 2</code>.
+      Asumsinya SD homogen antar-lengan dalam satu studi, yang lazim dipakai dan biasanya masuk akal untuk RCT paralel.
+    </p>
+    <p>
+      <strong>3. Kontras yang hilang.</strong> Semua lengan diletakkan pada satu sumbu relatif terhadap
+      komparator, jadi <code>md(A vs B) = d(A) - d(B)</code>. Standard error-nya dibangun ulang dari
+      kuantitas tingkat lengan, <code>se = sd&#7580; &times; &radic;(1/n&#7580; + 1/n&#7584;)</code>, bukan dari
+      penjumlahan dua SE kontras. Ini penting: dua kontras yang dilaporkan berbagi lengan plasebo yang sama,
+      jadi SE-nya berkorelasi dan tidak boleh dijumlahkan begitu saja.
+    </p>
+    <p>
+      <strong>4. Skala tetap konsisten.</strong> Baris hasil diisi lewat kolom <code>md</code>,
+      <code>lowci</code>, <code>highci</code>, sama seperti baris aslinya, supaya
+      <code>run_network_meta_analysis()</code> memakai jalur perhitungan yang sama untuk semua baris
+      dalam satu outcome. Kolom mean/SD sengaja dikosongkan secara default karena akan diabaikan mesin.
+    </p>
+    <p>
+      <strong>Yang perlu diingat.</strong> Baris turunan bukan bukti baru. Dia berasal dari studi yang sama
+      dan memang seharusnya begitu: <code>netmeta()</code> justru butuh baris itu untuk membentuk matriks
+      kovarians within-study yang benar, dan otomatis menyesuaikan bobotnya supaya studi tersebut tidak
+      dihitung berlebih.
+    </p>
+  </div>
+</details>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var Z = 1.959963985;
+
+  // ---------------------------------------------------------------- parsing
+
+  function parseTable(text) {
+    text = String(text).replace(/\r\n?/g, "\n").replace(/\n+$/, "");
+    if (!text.trim()) return null;
+    var head = text.split("\n")[0];
+    var delim = head.split("\t").length > head.split(",").length ? "\t" : ",";
+
+    var rows = [], row = [], field = "", quoted = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (quoted) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; } else { quoted = false; }
+        } else { field += c; }
+      } else if (c === '"') { quoted = true; }
+      else if (c === delim) { row.push(field); field = ""; }
+      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else { field += c; }
+    }
+    row.push(field); rows.push(row);
+    return { delim: delim, rows: rows };
+  }
+
+  function colIndex(header, names) {
+    var low = header.map(function (h) { return String(h).trim().toLowerCase(); });
+    for (var i = 0; i < names.length; i++) {
+      var j = low.indexOf(names[i]);
+      if (j >= 0) return j;
+    }
+    return -1;
+  }
+
+  function cell(row, i) { return i >= 0 && i < row.length ? String(row[i]).trim() : ""; }
+
+  function num(v) {
+    if (v === null || v === undefined) return null;
+    var s = String(v).trim().replace(/,/g, ".");
+    if (s === "" || /^(na|n\/a|nan|-)$/i.test(s)) return null;
+    var x = parseFloat(s);
+    return isFinite(x) ? x : null;
+  }
+
+  function fmt(x, dp) {
+    if (x === null || x === undefined || !isFinite(x)) return "";
+    var r = Number(x.toFixed(dp === undefined ? 4 : dp));
+    return String(r);
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function csvField(v, delim) {
+    var s = v === null || v === undefined ? "" : String(v);
+    if (delim === "," && /[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  // ---------------------------------------------------------------- analysis
+
+  // Turn one (study x outcome x measure) group into contrasts + derived rows.
+  function analyzeGroup(g) {
+    var contrasts = g.rows.map(function (r) {
+      var n1 = r.n1, n2 = r.n2;
+      var md = r.md;
+      var mdFromMeans = (r.mean1 !== null && r.mean2 !== null) ? r.mean1 - r.mean2 : null;
+      if (md === null) md = mdFromMeans;
+
+      var se = null, seSource = null;
+      if (r.lo !== null && r.hi !== null && r.hi > r.lo) {
+        se = (r.hi - r.lo) / (2 * Z);
+        seSource = "CI";
+      } else if (r.sd1 !== null && r.sd2 !== null && n1 && n2 && n1 > 1 && n2 > 1) {
+        var sp = Math.sqrt(((n1 - 1) * r.sd1 * r.sd1 + (n2 - 1) * r.sd2 * r.sd2) / (n1 + n2 - 2));
+        se = sp * Math.sqrt(1 / n1 + 1 / n2);
+        seSource = "SD lengan";
+      } else if (r.sd !== null && n1 && n2) {
+        se = r.sd * Math.sqrt(1 / n1 + 1 / n2);
+        seSource = "SD gabungan";
+      }
+
+      var sdImplied = (se !== null && n1 && n2) ? se / Math.sqrt(1 / n1 + 1 / n2) : null;
+
+      return {
+        raw: r, t1: r.t1, t2: r.t2, n1: n1, n2: n2,
+        md: md, mdFromMeans: mdFromMeans,
+        lo: r.lo, hi: r.hi,
+        se: se, seSource: seSource, sdImplied: sdImplied,
+        df: (n1 && n2) ? n1 + n2 - 2 : null
+      };
+    });
+
+    // treatment order = first appearance
+    var order = [], seen = {};
+    contrasts.forEach(function (c) {
+      [c.t1, c.t2].forEach(function (t) {
+        if (t && !seen[t]) { seen[t] = true; order.push(t); }
+      });
+    });
+
+    // n and mean per treatment arm
+    var armN = {}, armMean = {}, nConflict = [];
+    contrasts.forEach(function (c) {
+      var pairs = [[c.t1, c.n1, c.raw.mean1], [c.t2, c.n2, c.raw.mean2]];
+      pairs.forEach(function (p) {
+        var t = p[0], n = p[1], m = p[2];
+        if (n !== null) {
+          if (armN[t] === undefined) armN[t] = n;
+          else if (armN[t] !== n && nConflict.indexOf(t) < 0) nConflict.push(t);
+        }
+        if (m !== null && armMean[t] === undefined) armMean[t] = m;
+      });
+    });
+
+    // pooled within-study SD
+    var wsum = 0, dsum = 0;
+    contrasts.forEach(function (c) {
+      if (c.sdImplied !== null && c.df) { wsum += c.df * c.sdImplied * c.sdImplied; dsum += c.df; }
+    });
+    var sdCommon = dsum > 0 ? Math.sqrt(wsum / dsum) : null;
+
+    // place every arm on one axis relative to the hub node
+    var t2count = {};
+    contrasts.forEach(function (c) { t2count[c.t2] = (t2count[c.t2] || 0) + 1; });
+    var hub = order[0];
+    order.forEach(function (t) { if ((t2count[t] || 0) > (t2count[hub] || 0)) hub = t; });
+
+    var d = {}; d[hub] = 0;
+    for (var pass = 0; pass < order.length + 1; pass++) {
+      contrasts.forEach(function (c) {
+        if (c.md === null) return;
+        if (d[c.t2] !== undefined && d[c.t1] === undefined) d[c.t1] = d[c.t2] + c.md;
+        else if (d[c.t1] !== undefined && d[c.t2] === undefined) d[c.t2] = d[c.t1] - c.md;
+      });
+    }
+
+    // which pairs already exist
+    var have = {};
+    contrasts.forEach(function (c) { have[[c.t1, c.t2].sort().join("")] = true; });
+
+    var missing = [];
+    for (var a = 0; a < order.length; a++) {
+      for (var b = a + 1; b < order.length; b++) {
+        var key = [order[a], order[b]].sort().join("");
+        if (!have[key]) missing.push([order[a], order[b]]);
+      }
+    }
+
+    var generated = missing.map(function (p) {
+      var A = p[0], B = p[1];
+      var nA = armN[A], nB = armN[B];
+      var reason = null;
+      if (d[A] === undefined || d[B] === undefined) reason = "md salah satu lengan tidak tersedia";
+      else if (!nA || !nB) reason = "ukuran sampel salah satu lengan tidak tersedia";
+      else if (sdCommon === null) reason = "SD tidak bisa diturunkan (CI dan SD sama-sama kosong)";
+      if (reason) return { A: A, B: B, ok: false, reason: reason };
+
+      var md = d[A] - d[B];
+      var se = sdCommon * Math.sqrt(1 / nA + 1 / nB);
+      return {
+        A: A, B: B, ok: true, nA: nA, nB: nB,
+        md: md, se: se, lo: md - Z * se, hi: md + Z * se,
+        meanA: armMean[A] !== undefined ? armMean[A] : null,
+        meanB: armMean[B] !== undefined ? armMean[B] : null,
+        sd: sdCommon
+      };
+    });
+
+    // existing rows whose CI is blank but recoverable
+    var ciFix = contrasts.filter(function (c) {
+      return (c.lo === null || c.hi === null) && c.se !== null && c.md !== null;
+    }).map(function (c) {
+      return { c: c, lo: c.md - Z * c.se, hi: c.md + Z * c.se };
+    });
+
+    // diagnostics
+    var flags = [];
+    nConflict.forEach(function (t) {
+      flags.push("Ukuran sampel lengan " + t + " tidak konsisten antar baris. Nilai pertama yang dipakai.");
+    });
+    contrasts.forEach(function (c) {
+      if (c.mdFromMeans !== null && c.raw.md !== null && Math.abs(c.mdFromMeans - c.raw.md) > 0.005) {
+        flags.push("Baris " + c.t1 + " vs " + c.t2 + ": kolom md (" + fmt(c.raw.md, 3) +
+          ") berbeda dari mean1 - mean2 (" + fmt(c.mdFromMeans, 3) + "). " +
+          "Kalau lowci dan highci dibiarkan kosong, mesin akan memakai angka mean/SD, bukan md yang dilaporkan.");
+      }
+    });
+    if (String(g.measure).toUpperCase() === "SMD" && sdCommon !== null && sdCommon > 2) {
+      flags.push("Effect measure tertulis SMD tapi SD implied " + fmt(sdCommon, 2) +
+        ". Nilai md tampaknya masih pada skala asli, bukan skala standardisasi. Cek ulang sebelum dipakai.");
+    }
+
+    return {
+      contrasts: contrasts, order: order, armN: armN, armMean: armMean,
+      sdCommon: sdCommon, hub: hub, d: d,
+      generated: generated, ciFix: ciFix, flags: flags
+    };
+  }
+
+  // ---------------------------------------------------------------- forest strip
+
+  function forest(items) {
+    var lo = Infinity, hi = -Infinity;
+    items.forEach(function (it) {
+      if (isFinite(it.lo)) lo = Math.min(lo, it.lo);
+      if (isFinite(it.hi)) hi = Math.max(hi, it.hi);
+    });
+    lo = Math.min(lo, 0); hi = Math.max(hi, 0);
+    if (!isFinite(lo) || !isFinite(hi) || hi === lo) return "";
+    var pad = (hi - lo) * 0.08;
+    lo -= pad; hi += pad;
+    var pct = function (v) { return ((v - lo) / (hi - lo)) * 100; };
+
+    var html = '<div class="forest">';
+    items.forEach(function (it) {
+      html += '<div class="fl">' + it.label + "</div>";
+      html += '<div class="track ' + (it.derived ? "der" : "obs") + '">' +
+        '<span class="zero" style="left:' + pct(0) + '%"></span>' +
+        '<span class="bar" style="left:' + pct(it.lo) + "%;width:" + (pct(it.hi) - pct(it.lo)) + '%"></span>' +
+        '<span class="cap" style="left:' + pct(it.lo) + '%"></span>' +
+        '<span class="cap" style="left:' + pct(it.hi) + '%"></span>' +
+        '<span class="dot" style="left:' + pct(it.md) + '%"></span>' +
+        "</div>";
+    });
+    html += '<div class="fl"></div><div class="axis">' +
+      '<span style="left:0%">' + fmt(lo, 2) + "</span>" +
+      '<span style="left:' + pct(0) + '%">0</span>' +
+      '<span style="left:100%">' + fmt(hi, 2) + "</span>" +
+      "</div></div>";
+    return html;
+  }
+
+  // ---------------------------------------------------------------- rendering
+
+  var lastCSV = "";
+
+  function copyBtn(text, label) {
+    var id = "c" + Math.random().toString(36).slice(2, 9);
+    window.__clip = window.__clip || {};
+    window.__clip[id] = text;
+    return '<button class="act" data-copy="' + id + '">' + (label || "Salin") + "</button>";
+  }
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-copy]");
+    if (!b) return;
+    var txt = window.__clip[b.getAttribute("data-copy")];
+    navigator.clipboard.writeText(txt).then(function () {
+      var old = b.textContent;
+      b.textContent = "Tersalin";
+      setTimeout(function () { b.textContent = old; }, 1400);
+    });
+  });
+
+  function render(groups, header, delim, withMeans) {
+    var host = document.getElementById("results");
+    var nMulti = 0, nGen = 0, nFix = 0, nFlag = 0;
+    var csvLines = [];
+    var cards = "";
+
+    groups.forEach(function (g) {
+      var a = analyzeGroup(g);
+      var hasWork = a.generated.length > 0 || a.ciFix.length > 0 || a.flags.length > 0;
+      if (a.order.length > 2) nMulti++;
+      if (!hasWork) return;
+
+      nGen += a.generated.filter(function (x) { return x.ok; }).length;
+      nFix += a.ciFix.length;
+      nFlag += a.flags.length;
+
+      var body = "";
+
+      // --- summary of arms
+      body += '<div class="scroll"><table><thead><tr>' +
+        "<th>Lengan</th><th>n</th><th>md vs " + esc(a.hub) + "</th><th>SE</th><th>SD implied</th><th>Sumber SE</th>" +
+        "</tr></thead><tbody>";
+      a.order.forEach(function (t) {
+        var c = a.contrasts.filter(function (x) { return x.t1 === t; })[0];
+        body += "<tr><td>" + esc(t) + "</td>" +
+          '<td class="num">' + (a.armN[t] !== undefined ? a.armN[t] : "") + "</td>" +
+          '<td class="num">' + (a.d[t] !== undefined ? fmt(a.d[t], 3) : "") + "</td>" +
+          '<td class="num">' + (c && c.se !== null ? fmt(c.se, 4) : "") + "</td>" +
+          '<td class="num">' + (c && c.sdImplied !== null ? fmt(c.sdImplied, 3) : "") + "</td>" +
+          "<td>" + (c && c.seSource ? esc(c.seSource) : "") + "</td></tr>";
+      });
+      body += "</tbody></table></div>";
+
+      if (a.sdCommon !== null) {
+        body += '<p class="hint">SD bersama studi ini (bobot derajat bebas): <b style="font-family:var(--mono)">' +
+          fmt(a.sdCommon, 4) + "</b></p>";
+      }
+
+      // --- derived rows
+      a.generated.forEach(function (x) {
+        if (!x.ok) {
+          body += '<div class="flag"><span class="mk">!</span><span>Tidak bisa membentuk ' +
+            esc(x.A) + " vs " + esc(x.B) + ": " + esc(x.reason) + ".</span></div>";
+          return;
+        }
+        var items = a.contrasts.filter(function (c) { return c.se !== null && c.md !== null; })
+          .map(function (c) {
+            var lo = c.lo !== null ? c.lo : c.md - Z * c.se;
+            var hi = c.hi !== null ? c.hi : c.md + Z * c.se;
+            return { label: esc(c.t1) + " vs " + esc(c.t2), md: c.md, lo: lo, hi: hi, derived: false };
+          });
+        items.push({
+          label: "<b>" + esc(x.A) + " vs " + esc(x.B) + "</b>",
+          md: x.md, lo: x.lo, hi: x.hi, derived: true
+        });
+
+        body += '<h3 style="margin-top:20px">' + esc(x.A) + " vs " + esc(x.B) + "</h3>";
+        body += forest(items);
+        body += '<p class="hint" style="font-family:var(--mono);color:var(--ink-2)">md = ' +
+          fmt(x.md, 4) + " &nbsp; SE = " + fmt(x.se, 4) +
+          " &nbsp; 95% CI [" + fmt(x.lo, 4) + ", " + fmt(x.hi, 4) + "]" +
+          " &nbsp; n = " + x.nA + " vs " + x.nB + "</p>";
+
+        // build the CSV row against the original header
+        var vals = header.map(function () { return ""; });
+        var put = function (names, v) {
+          var i = colIndex(header, names);
+          if (i >= 0) vals[i] = v;
+        };
+        // carry the group's metadata forward
+        var src = g.rows[0].cells;
+        ["study", "outcome_name", "effect_measure", "nma_reference", "nma_small_values"].forEach(function (nm) {
+          var i = colIndex(header, [nm]);
+          if (i >= 0) vals[i] = cell(src, i);
+        });
+        put(["treat1"], x.A);
+        put(["treat2"], x.B);
+        put(["md"], fmt(x.md, 4));
+        put(["lowci"], fmt(x.lo, 4));
+        put(["highci"], fmt(x.hi, 4));
+        put(["sample1", "n1"], String(x.nA));
+        put(["sample2", "n2"], String(x.nB));
+        if (withMeans) {
+          if (x.meanA !== null) put(["mean1"], fmt(x.meanA, 4));
+          if (x.meanB !== null) put(["mean2"], fmt(x.meanB, 4));
+          put(["sd1"], fmt(x.sd, 4));
+          put(["sd2"], fmt(x.sd, 4));
+        }
+        var line = vals.map(function (v) { return csvField(v, delim); }).join(delim);
+        csvLines.push(line);
+        body += '<pre class="out">' + esc(line) + "</pre>";
+        body += '<div class="btn-row">' + copyBtn(line, "Salin baris ini") + "</div>";
+      });
+
+      // --- CI completions
+      if (a.ciFix.length) {
+        body += '<h3 style="margin-top:22px">Baris existing yang lowci dan highci masih kosong</h3>';
+        body += '<p class="note" style="margin-bottom:10px">Ganti baris aslinya dengan versi di bawah supaya mesin memakai md yang dilaporkan, bukan hasil hitung ulang dari mean dan SD.</p>';
+        a.ciFix.forEach(function (f) {
+          var vals = f.c.raw.cells.slice();
+          while (vals.length < header.length) vals.push("");
+          var iLo = colIndex(header, ["lowci"]), iHi = colIndex(header, ["highci"]);
+          var iMd = colIndex(header, ["md"]);
+          if (iLo >= 0) vals[iLo] = fmt(f.lo, 4);
+          if (iHi >= 0) vals[iHi] = fmt(f.hi, 4);
+          if (iMd >= 0 && cell(vals, iMd) === "") vals[iMd] = fmt(f.c.md, 4);
+          var line = vals.map(function (v) { return csvField(String(v).trim(), delim); }).join(delim);
+          csvLines.push(line);
+          body += '<p class="hint" style="font-family:var(--mono);color:var(--ink-2)">' +
+            esc(f.c.t1) + " vs " + esc(f.c.t2) + " &nbsp; md = " + fmt(f.c.md, 4) +
+            " &nbsp; SE = " + fmt(f.c.se, 4) + " &nbsp; 95% CI [" + fmt(f.lo, 4) + ", " + fmt(f.hi, 4) + "]</p>";
+          body += '<pre class="out">' + esc(line) + "</pre>";
+          body += '<div class="btn-row">' + copyBtn(line, "Salin baris ini") + "</div>";
+        });
+      }
+
+      a.flags.forEach(function (t) {
+        body += '<div class="flag"><span class="mk">!</span><span>' + esc(t) + "</span></div>";
+      });
+
+      var chips = "";
+      if (a.generated.filter(function (x) { return x.ok; }).length)
+        chips += '<span class="chip derived">baris baru</span> ';
+      if (a.ciFix.length) chips += '<span class="chip fix">lengkapi CI</span> ';
+      if (a.flags.length) chips += '<span class="chip warn">cek data</span>';
+
+      cards += '<div class="card"><div class="head">' +
+        '<span class="title">' + esc(g.study) + "</span>" +
+        '<span class="sub">' + esc(g.outcome) + (g.measure ? " &middot; " + esc(g.measure) : "") +
+        " &middot; " + a.order.length + " lengan</span>" +
+        '<span style="margin-left:auto">' + chips + "</span>" +
+        '</div><div class="body">' + body + "</div></div>";
+    });
+
+    var head = '<div class="summary">' +
+      '<div class="stat on-accent"><div class="k">Grup multi-lengan</div><div class="v">' + nMulti + "</div></div>" +
+      '<div class="stat on-derived"><div class="k">Baris baru</div><div class="v">' + nGen + "</div></div>" +
+      '<div class="stat on-accent"><div class="k">CI dilengkapi</div><div class="v">' + nFix + "</div></div>" +
+      '<div class="stat on-warn"><div class="k">Perlu dicek</div><div class="v">' + nFlag + "</div></div>" +
+      "</div>";
+
+    if (!cards) {
+      host.innerHTML = head + '<p class="empty">Tidak ada studi multi-lengan yang perlu dilengkapi.</p>';
+      return;
+    }
+
+    lastCSV = csvLines.join("\n");
+    var all = "<h2>Semua baris siap tempel</h2>" +
+      '<p class="note">Tempel di bawah baris terakhir sheet kontinu Anda. Baris hasil koreksi CI menggantikan baris aslinya, bukan ditambahkan.</p>' +
+      '<pre class="out">' + esc(header.join(delim)) + "\n" + esc(lastCSV) + "</pre>" +
+      '<div class="btn-row">' + copyBtn(lastCSV, "Salin " + csvLines.length + " baris") +
+      copyBtn(header.join(delim) + "\n" + lastCSV, "Salin dengan header") + "</div>";
+
+    host.innerHTML = head + cards + '<section style="padding-top:14px">' + all + "</section>";
+  }
+
+  // ---------------------------------------------------------------- drivers
+
+  function runBulk() {
+    var parsed = parseTable(document.getElementById("raw").value);
+    var noteEl = document.getElementById("parseNote");
+    if (!parsed) {
+      noteEl.textContent = "Belum ada data.";
+      document.getElementById("results").innerHTML = "";
+      return;
+    }
+    var header = parsed.rows[0].map(function (h) { return String(h).trim(); });
+    var body = parsed.rows.slice(1).filter(function (r) {
+      return r.some(function (c) { return String(c).trim() !== ""; });
+    });
+
+    var iStudy = colIndex(header, ["study"]);
+    var iT1 = colIndex(header, ["treat1"]);
+    var iT2 = colIndex(header, ["treat2"]);
+    if (iStudy < 0 || iT1 < 0 || iT2 < 0) {
+      noteEl.innerHTML = '<b style="color:var(--crit)">Kolom study, treat1, atau treat2 tidak ditemukan di header.</b>';
+      document.getElementById("results").innerHTML = "";
+      return;
+    }
+
+    var iOut = colIndex(header, ["outcome_name", "outcome"]);
+    var iMea = colIndex(header, ["effect_measure", "sm"]);
+    var iMd = colIndex(header, ["md", "yi", "te"]);
+    var iLo = colIndex(header, ["lowci", "ci_lower", "lower"]);
+    var iHi = colIndex(header, ["highci", "ci_upper", "upper"]);
+    var iM1 = colIndex(header, ["mean1"]), iS1 = colIndex(header, ["sd1"]);
+    var iM2 = colIndex(header, ["mean2"]), iS2 = colIndex(header, ["sd2"]);
+    var iSD = colIndex(header, ["sd"]);
+    var iN1 = colIndex(header, ["sample1", "n1"]);
+    var iN2 = colIndex(header, ["sample2", "n2"]);
+
+    var map = {}, order = [];
+    body.forEach(function (r) {
+      var study = cell(r, iStudy);
+      var t1 = cell(r, iT1), t2 = cell(r, iT2);
+      if (!study || !t1 || !t2) return;
+      var outcome = iOut >= 0 ? cell(r, iOut) : "(outcome tunggal)";
+      var measure = iMea >= 0 ? cell(r, iMea).toUpperCase() : "";
+      var key = study + "" + outcome + "" + measure;
+      if (!map[key]) {
+        map[key] = { study: study, outcome: outcome, measure: measure, rows: [] };
+        order.push(key);
+      }
+      map[key].rows.push({
+        cells: r, t1: t1, t2: t2,
+        md: iMd >= 0 ? num(cell(r, iMd)) : null,
+        lo: iLo >= 0 ? num(cell(r, iLo)) : null,
+        hi: iHi >= 0 ? num(cell(r, iHi)) : null,
+        mean1: iM1 >= 0 ? num(cell(r, iM1)) : null,
+        sd1: iS1 >= 0 ? num(cell(r, iS1)) : null,
+        mean2: iM2 >= 0 ? num(cell(r, iM2)) : null,
+        sd2: iS2 >= 0 ? num(cell(r, iS2)) : null,
+        sd: iSD >= 0 ? num(cell(r, iSD)) : null,
+        n1: iN1 >= 0 ? num(cell(r, iN1)) : null,
+        n2: iN2 >= 0 ? num(cell(r, iN2)) : null
+      });
+    });
+
+    var groups = order.map(function (k) { return map[k]; });
+    noteEl.textContent = body.length + " baris data terbaca, " + groups.length +
+      " kombinasi studi dan outcome, pemisah " + (parsed.delim === "\t" ? "tab" : "koma") + ".";
+    render(groups, header, parsed.delim, document.getElementById("withMeans").checked);
+  }
+
+  // ---------------------------------------------------------------- manual mode
+
+  var HEADER_MANUAL = ["study", "outcome_name", "effect_measure", "treat1", "treat2",
+    "nma_reference", "nma_small_values", "md", "lowci", "highci",
+    "mean1", "sd1", "sample1", "mean2", "sd2", "sample2"];
+
+  function armRow(v) {
+    v = v || {};
+    var d = document.createElement("div");
+    d.className = "arm-row";
+    d.innerHTML =
+      '<label>Nama lengan<input type="text" class="a-name" value="' + esc(v.name || "") + '"></label>' +
+      '<label>n<input type="number" class="a-n" value="' + (v.n || "") + '"></label>' +
+      '<label>md<input type="number" step="any" class="a-md" value="' + (v.md !== undefined ? v.md : "") + '"></label>' +
+      '<label>lowci<input type="number" step="any" class="a-lo" value="' + (v.lo !== undefined ? v.lo : "") + '"></label>' +
+      '<label>highci<input type="number" step="any" class="a-hi" value="' + (v.hi !== undefined ? v.hi : "") + '"></label>' +
+      '<button class="kill" title="Hapus lengan" aria-label="Hapus lengan">&times;</button>';
+    d.querySelector(".kill").addEventListener("click", function () { d.remove(); });
+    return d;
+  }
+
+  function runManual() {
+    var study = document.getElementById("m-study").value.trim() || "studi";
+    var outcome = document.getElementById("m-outcome").value.trim() || "outcome";
+    var measure = document.getElementById("m-measure").value.trim().toUpperCase() || "MD";
+    var ref = document.getElementById("m-ref").value.trim() || "Placebo";
+    var refN = num(document.getElementById("m-refn").value);
+
+    var rows = [];
+    Array.prototype.forEach.call(document.querySelectorAll("#armHost .arm-row"), function (el) {
+      var name = el.querySelector(".a-name").value.trim();
+      if (!name) return;
+      rows.push({
+        cells: [study, outcome, measure, name, ref, ref, "undesirable", "", "", "", "", "", "", "", "", ""],
+        t1: name, t2: ref,
+        md: num(el.querySelector(".a-md").value),
+        lo: num(el.querySelector(".a-lo").value),
+        hi: num(el.querySelector(".a-hi").value),
+        mean1: null, sd1: null, mean2: null, sd2: null, sd: null,
+        n1: num(el.querySelector(".a-n").value), n2: refN
+      });
+    });
+
+    if (rows.length < 2) {
+      document.getElementById("results").innerHTML =
+        '<p class="empty">Perlu minimal dua lengan aktif untuk membentuk perbandingan yang hilang.</p>';
+      return;
+    }
+    render([{ study: study, outcome: outcome, measure: measure, rows: rows }],
+      HEADER_MANUAL, ",", document.getElementById("withMeans").checked);
+  }
+
+  // ---------------------------------------------------------------- sample data
+
+  var DEMO = [
+    "study,outcome_name,effect_measure,treat1,treat2,nma_reference,nma_small_values,md,lowci,highci,mean1,sd1,sample1,mean2,sd2,sample2",
+    "cohen2023,ADCS-MCI-ADL,SMD,Lecanemab 10 mg/kg biweekly,Placebo,Placebo,undesirable,2,1.2,2.8,-3.5,,859,-5.5,,875",
+    "haeberlein2022_EMERGE,CDR-SB,MD,Aducanumab High Dose,Placebo,Placebo,undesirable,-0.39,-0.69,-0.09,,,547,1.74,,548",
+    "haeberlein2022_EMERGE,CDR-SB,MD,Aducanumab Low Dose,Placebo,Placebo,undesirable,-0.26,-0.57,0.04,,,543,1.74,,548",
+    "haeberlein2022_EMERGE,MMSE,MD,Aducanumab High Dose,Placebo,Placebo,undesirable,0.6,0,1.1,,,547,-3.3,,548",
+    "haeberlein2022_EMERGE,MMSE,MD,Aducanumab Low Dose,Placebo,Placebo,undesirable,-0.1,-0.7,0.5,,,543,-3.3,,548",
+    "haeberlein2022_EMERGE,ADAS-Cog13,SMD,Aducanumab High Dose,Placebo,Placebo,undesirable,-1.4,-2.46,-0.34,,,547,5.16,,548",
+    "haeberlein2022_EMERGE,ADAS-Cog13,SMD,Aducanumab Low Dose,Placebo,Placebo,undesirable,-0.7,-1.76,0.36,,,543,5.16,,548",
+    "haeberlein2022_EMERGE,ADCS-MCI-ADL,SMD,Aducanumab High Dose,Placebo,Placebo,undesirable,1.7,0.7,2.7,,,547,-4.3,,548",
+    "haeberlein2022_EMERGE,ADCS-MCI-ADL,SMD,Aducanumab Low Dose,Placebo,Placebo,undesirable,0.7,-0.3,1.7,,,543,-4.3,,548",
+    "haeberlein2022_ENGAGE,CDR-SB,MD,Aducanumab High Dose,Placebo,Placebo,undesirable,0.03,-0.26,0.33,,,555,1.56,,545",
+    "haeberlein2022_ENGAGE,CDR-SB,MD,Aducanumab Low Dose,Placebo,Placebo,undesirable,-0.18,-0.47,0.11,,,547,1.56,,545",
+    "haeberlein2022_ENGAGE,MMSE,MD,Aducanumab High Dose,Placebo,Placebo,undesirable,-0.1,-0.6,0.5,,,555,-3.5,,545",
+    "haeberlein2022_ENGAGE,MMSE,MD,Aducanumab Low Dose,Placebo,Placebo,undesirable,0.2,-0.3,0.7,,,547,-3.5,,545",
+    "haeberlein2022_ENGAGE,ADAS-Cog13,SMD,Aducanumab High Dose,Placebo,Placebo,undesirable,-0.59,-1.61,0.43,,,555,5.14,,545",
+    "haeberlein2022_ENGAGE,ADAS-Cog13,SMD,Aducanumab Low Dose,Placebo,Placebo,undesirable,-0.58,-1.58,0.42,,,547,5.14,,545",
+    "haeberlein2022_ENGAGE,ADCS-MCI-ADL,SMD,Aducanumab High Dose,Placebo,Placebo,undesirable,0.7,-0.2,1.6,,,555,-3.8,,545",
+    "haeberlein2022_ENGAGE,ADCS-MCI-ADL,SMD,Aducanumab Low Dose,Placebo,Placebo,undesirable,0.7,-0.2,1.6,,,547,-3.8,,545",
+    "honig2018,CDR-SB,MD,Solanezumab 400 mg,Placebo,Placebo,undesirable,-0.34,-0.57,-0.11,1.87,,908,2.21,,893",
+    "vandenberghe2016_Carrier,CDR-SB,MD,Bapineuzumab_0.5_mg/kg,Placebo,Placebo,undesirable,-0.15,,,2.3,2.9,427,2.4,2.8,310",
+    "vandenberghe2016_Noncarrier,CDR-SB,MD,Bapineuzumab_0.5_mg/kg,Placebo,Placebo,undesirable,-0.36,,,2.2,2.8,115,2.5,2.8,144",
+    "vandenberghe2016_Noncarrier,CDR-SB,MD,Bapineuzumab_1.0_mg/kg,Placebo,Placebo,undesirable,-0.18,,,2.2,2.6,110,2.5,2.8,144"
+  ].join("\n");
+
+  // ---------------------------------------------------------------- wiring
+
+  document.getElementById("run").addEventListener("click", runBulk);
+  document.getElementById("runManual").addEventListener("click", runManual);
+  document.getElementById("demo").addEventListener("click", function () {
+    document.getElementById("raw").value = DEMO;
+    runBulk();
+  });
+  document.getElementById("clear").addEventListener("click", function () {
+    document.getElementById("raw").value = "";
+    document.getElementById("parseNote").textContent = "";
+    document.getElementById("results").innerHTML = "";
+  });
+  document.getElementById("withMeans").addEventListener("change", function () {
+    if (document.getElementById("pane-bulk").classList.contains("hidden")) runManual();
+    else if (document.getElementById("raw").value.trim()) runBulk();
+  });
+  document.getElementById("addArm").addEventListener("click", function () {
+    document.getElementById("armHost").appendChild(armRow({}));
+  });
+
+  ["tab-bulk", "tab-manual"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () {
+      var bulk = id === "tab-bulk";
+      document.getElementById("tab-bulk").setAttribute("aria-selected", String(bulk));
+      document.getElementById("tab-manual").setAttribute("aria-selected", String(!bulk));
+      document.getElementById("pane-bulk").classList.toggle("hidden", !bulk);
+      document.getElementById("pane-manual").classList.toggle("hidden", bulk);
+      document.getElementById("results").innerHTML = "";
+    });
+  });
+
+  // seed the manual form with the EMERGE CDR-SB case
+  var host = document.getElementById("armHost");
+  host.appendChild(armRow({ name: "Aducanumab High Dose", n: 547, md: -0.39, lo: -0.69, hi: -0.09 }));
+  host.appendChild(armRow({ name: "Aducanumab Low Dose", n: 543, md: -0.26, lo: -0.57, hi: 0.04 }));
+})();
+</script>
