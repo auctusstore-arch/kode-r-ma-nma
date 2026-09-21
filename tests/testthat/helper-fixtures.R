@@ -53,11 +53,13 @@ make_v2_fixture <- function(path, active = c("pairwise", "continuous", "proporti
 
   arm_data <- .empty_df(.sheet_specs$arm_data)
   add_arm <- function(outcome_name, study_label, treatment, event = NA, sample,
-                      mean = NA, sd = NA, median = NA, q1 = NA, q3 = NA,
+                      mean = NA, sd = NA, ci_low = NA, ci_high = NA, ci_level = NA,
+                      median = NA, q1 = NA, q3 = NA,
                       min = NA, max = NA) {
     data.frame(
       outcome_name = outcome_name, study_label = study_label, treatment = treatment,
       event = event, sample = sample, mean = mean, sd = sd,
+      ci_low = ci_low, ci_high = ci_high, ci_level = ci_level,
       median = median, q1 = q1, q3 = q3, min = min, max = max,
       notes = "Fixture", stringsAsFactors = FALSE
     )

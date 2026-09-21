@@ -290,10 +290,11 @@ Studi 2, 3, dan 4 arm memerlukan 2, 3, dan 4 baris input. Engine membuat masing-
 Pilihan input:
 
 1. `mean + sd + sample`;
-2. `median + q1 + q3 + sample`;
-3. `median + min + max + sample`.
+2. `mean + ci_low + ci_high + sample` (SD dihitung dari CI, Cochrane 6.5.2.2; `ci_level` default 95);
+3. `median + q1 + q3 + sample`;
+4. `median + min + max + sample`.
 
-Median dan quantile dikonversi memakai Quantile Estimation dari `estmeansd`. Konversi selalu menghasilkan `W301_MEDIAN_CONVERTED` dan sensitivity analysis yang mengecualikan studi hasil konversi.
+Median dan quantile dikonversi memakai Quantile Estimation dari `estmeansd`. Konversi median selalu menghasilkan `W301_MEDIAN_CONVERTED` dan sensitivity analysis yang mengecualikan studi hasil konversi median. Konversi mean+CI menghasilkan `I302_SD_FROM_MEAN_CI` dan **tidak** dikeluarkan dari sensitivity median.
 
 ## 7. Mengisi `effect_data`
 

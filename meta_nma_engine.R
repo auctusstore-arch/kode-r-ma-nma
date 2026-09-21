@@ -335,7 +335,7 @@ print.auctus_dependency_check <- function(x, ...) {
   study_metadata = c("study_label", "year", "study_design"),
   arm_data = c(
     "outcome_name", "study_label", "treatment", "event", "sample",
-    "mean", "sd", "median", "q1", "q3", "min", "max", "notes"
+    "mean", "sd", "ci_low", "ci_high", "ci_level", "median", "q1", "q3", "min", "max", "notes"
   ),
   effect_data = c(
     "outcome_name", "study_label", "treat1", "treat2", "effect", "ci_low",
@@ -751,10 +751,11 @@ print.auctus_dependency_check <- function(x, ...) {
         )
       }
     }
-    for (col in c("event", "sample", "mean", "sd", "median", "q1", "q3", "min", "max")) {
+    for (col in c("event", "sample", "mean", "sd", "ci_low", "ci_high", "ci_level",
+                  "median", "q1", "q3", "min", "max")) {
       diag <- .validate_numeric_cell(
         diag, arms, i, col,
-        minimum = if (col %in% c("event", "sample", "sd")) 0 else -Inf,
+        minimum = if (col %in% c("event", "sample", "sd", "ci_level")) 0 else -Inf,
         strictly_positive = col == "sample",
         integer = col %in% c("event", "sample")
       )
@@ -989,17 +990,30 @@ print.auctus_dependency_check <- function(x, ...) {
         if (otype %in% c("continuous", "mean")) {
           has_mean_sd <- !is.na(.as_num(aa$mean[[arm_i]])) &&
             !is.na(.as_num(aa$sd[[arm_i]])) && .as_num(aa$sd[[arm_i]]) > 0
+          has_mean_ci <- !is.na(.as_num(aa$mean[[arm_i]])) &&
+            !is.na(.as_num(aa$ci_low[[arm_i]])) && !is.na(.as_num(aa$ci_high[[arm_i]])) &&
+            .as_num(aa$ci_high[[arm_i]]) > .as_num(aa$ci_low[[arm_i]]) &&
+            !is.na(.as_num(aa$sample[[arm_i]])) && .as_num(aa$sample[[arm_i]]) >= 2
           has_median_iqr <- !is.na(.as_num(aa$median[[arm_i]])) &&
             !is.na(.as_num(aa$q1[[arm_i]])) && !is.na(.as_num(aa$q3[[arm_i]]))
           has_median_range <- !is.na(.as_num(aa$median[[arm_i]])) &&
             !is.na(.as_num(aa$min[[arm_i]])) && !is.na(.as_num(aa$max[[arm_i]]))
-          if (!(has_mean_sd || has_median_iqr || has_median_range)) {
+          if (!(has_mean_sd || has_mean_ci || has_median_iqr || has_median_range)) {
             original_i <- which(arms$source_sheet == aa$source_sheet[[arm_i]] &
                                   arms$source_row == aa$source_row[[arm_i]])[[1L]]
             diag <- .diag_for_cell(
               diag, "ERROR", "E112_INCOMPLETE_CONTINUOUS_DATA", arms, original_i, "mean",
-              "Data continuous membutuhkan mean+SD, median+Q1+Q3, atau median+min+max.",
+              "Data continuous membutuhkan mean+SD, mean+CI, median+Q1+Q3, atau median+min+max.",
               "Lengkapi salah satu set ringkasan pada baris arm yang sama.", "mean=120; sd=15"
+            )
+          } else if (has_mean_ci && !has_mean_sd) {
+            original_i <- which(arms$source_sheet == aa$source_sheet[[arm_i]] &
+                                  arms$source_row == aa$source_row[[arm_i]])[[1L]]
+            diag <- .diag_for_cell(
+              diag, "INFO", "I302_SD_FROM_MEAN_CI", arms, original_i, "ci_low",
+              "SD akan dihitung dari mean dan confidence interval (Cochrane 6.5.2.2).",
+              "Jika paper juga melaporkan SD, isi kolom sd agar konversi CI tidak dipakai.",
+              aa$ci_low[[arm_i]]
             )
           }
         }
@@ -1251,7 +1265,8 @@ print.auctus_dependency_check <- function(x, ...) {
       ),
       event = c(8, 15, 0, 7, 22, 17, 31, 18, 13, 26, 0, 24),
       sample = c(100, 100, 80, 82, 120, 118, 122, 105, 103, 108, 150, 180),
-      mean = NA, sd = NA, median = NA, q1 = NA, q3 = NA, min = NA, max = NA,
+      mean = NA, sd = NA, ci_low = NA, ci_high = NA, ci_level = NA,
+      median = NA, q1 = NA, q3 = NA, min = NA, max = NA,
       notes = "Contoh",
       stringsAsFactors = FALSE
     ),
@@ -1630,6 +1645,8 @@ print.auctus_dependency_check <- function(x, ...) {
     sample = "Jumlah peserta dalam arm. Harus lebih besar dari 0.",
     effect = "Reported OR/RR/HR/MD/SMD pada skala natural.",
     se = "SE pada skala model. Untuk OR/RR/HR gunakan SE log-effect. Jika ragu, isi CI saja.",
+    ci_low = "Batas bawah CI. Pada arm_data: CI mean. Pada effect_data: CI effect pada skala natural.",
+    ci_high = "Batas atas CI. Pada arm_data: CI mean. Pada effect_data: CI effect pada skala natural.",
     ci_level = "Confidence level dalam persen. Default 95 bila dikosongkan.",
     estimate_type = "adjusted atau crude.",
     subgroup_region = "Kolom berawalan subgroup_ dianalisis sebagai subgroup.",
@@ -1868,7 +1885,7 @@ print.auctus_validation <- function(x, ...) {
   study_metadata = c("analysis_id", "study_id", "study_label", "year", "study_design"),
   arm_data = c(
     "analysis_id", "study_id", "treatment", "event", "sample", "mean", "sd",
-    "median", "q1", "q3", "min", "max", "include", "notes"
+    "ci_low", "ci_high", "ci_level", "median", "q1", "q3", "min", "max", "include", "notes"
   ),
   effect_data = c(
     "analysis_id", "study_id", "treat1", "treat2", "effect", "ci_low", "ci_high",
@@ -2064,10 +2081,16 @@ print.auctus_validation <- function(x, ...) {
         sd1 <- .legacy_value(dat, c("sd1", "sd_e"))[[i]]
         m2 <- .legacy_value(dat, c("mean2", "mean_c"))[[i]]
         sd2 <- .legacy_value(dat, c("sd2", "sd_c"))[[i]]
+        lo1 <- .legacy_value(dat, c("lowci1", "ci_low1", "lower1"))[[i]]
+        hi1 <- .legacy_value(dat, c("highci1", "ci_high1", "upper1"))[[i]]
+        lo2 <- .legacy_value(dat, c("lowci2", "ci_low2", "lower2"))[[i]]
+        hi2 <- .legacy_value(dat, c("highci2", "ci_high2", "upper2"))[[i]]
         has_raw <- if (otype == "binary") {
           all(!is.na(.trim_chr(c(e1, n1, e2, n2))))
         } else {
-          all(!is.na(.trim_chr(c(m1, sd1, n1, m2, sd2, n2))))
+          has_mean_sd <- all(!is.na(.trim_chr(c(m1, sd1, n1, m2, sd2, n2))))
+          has_mean_ci <- all(!is.na(.trim_chr(c(m1, lo1, hi1, n1, m2, lo2, hi2, n2))))
+          has_mean_sd || has_mean_ci
         }
         if (has_raw) {
           out$arm_data <- rbind(out$arm_data, data.frame(
@@ -2076,6 +2099,9 @@ print.auctus_validation <- function(x, ...) {
             event = if (otype == "binary") c(e1, e2) else NA,
             sample = c(n1, n2), mean = if (otype == "continuous") c(m1, m2) else NA,
             sd = if (otype == "continuous") c(sd1, sd2) else NA,
+            ci_low = if (otype == "continuous") c(lo1, lo2) else NA,
+            ci_high = if (otype == "continuous") c(hi1, hi2) else NA,
+            ci_level = if (otype == "continuous") 95 else NA,
             median = NA, q1 = NA, q3 = NA, min = NA, max = NA,
             notes = "Dikonversi dari V1", stringsAsFactors = FALSE
           ))
@@ -2139,6 +2165,9 @@ print.auctus_validation <- function(x, ...) {
           event = .legacy_value(dat, c("event", "events"))[[i]],
           sample = .legacy_value(dat, c("sample", "n"))[[i]],
           mean = .legacy_value(dat, "mean")[[i]], sd = .legacy_value(dat, "sd")[[i]],
+          ci_low = .legacy_value(dat, c("lowci", "ci_low", "lowci1"))[[i]],
+          ci_high = .legacy_value(dat, c("highci", "ci_high", "highci1"))[[i]],
+          ci_level = 95,
           median = .legacy_value(dat, "median")[[i]], q1 = .legacy_value(dat, "q1")[[i]],
           q3 = .legacy_value(dat, "q3")[[i]], min = .legacy_value(dat, "min")[[i]],
           max = .legacy_value(dat, "max")[[i]],
@@ -2161,7 +2190,8 @@ print.auctus_validation <- function(x, ...) {
       if (length(idx) == 1L) {
         keep[idx] <- TRUE
       } else {
-        fields <- c("event", "sample", "mean", "sd", "median", "q1", "q3", "min", "max")
+        fields <- c("event", "sample", "mean", "sd", "ci_low", "ci_high", "ci_level",
+                    "median", "q1", "q3", "min", "max")
         consistent <- all(vapply(fields, function(field) {
           x <- unique(.trim_chr(out$arm_data[[field]][idx]))
           length(x[!is.na(x)]) <= 1L
@@ -2354,7 +2384,8 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   arms$study_label <- .trim_chr(arms$canonical_study_label)
   arms$treatment <- .trim_chr(arms$treatment)
   if ("arm_id" %in% names(arms)) arms$arm_id <- NULL
-  for (nm in c("event", "sample", "mean", "sd", "median", "q1", "q3", "min", "max")) {
+  for (nm in c("event", "sample", "mean", "sd", "ci_low", "ci_high", "ci_level",
+               "median", "q1", "q3", "min", "max")) {
     arms[[nm]] <- .as_num(arms[[nm]])
   }
 
@@ -2382,25 +2413,48 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
        effect_data = effects, diagnostic_data = dta)
 }
 
+.arm_num <- function(row, name) {
+  if (!name %in% names(row)) return(NA_real_)
+  val <- .as_num(row[[name]])
+  if (!length(val)) return(NA_real_)
+  val[[1L]]
+}
+
 .mean_sd_from_arm <- function(row) {
-  mean_value <- .as_num(row$mean)
-  sd_value <- .as_num(row$sd)
+  mean_value <- .arm_num(row, "mean")
+  sd_value <- .arm_num(row, "sd")
   converted <- FALSE
   conversion_method <- NA_character_
-  if (!is.na(mean_value) && !is.na(sd_value)) {
+  if (!is.na(mean_value) && !is.na(sd_value) && sd_value > 0) {
     return(list(mean = mean_value, sd = sd_value, converted = FALSE,
                 conversion_method = NA_character_))
   }
-  if (is.na(.as_num(row$median)) || is.na(.as_num(row$sample))) {
+  n <- .arm_num(row, "sample")
+  lo <- .arm_num(row, "ci_low")
+  hi <- .arm_num(row, "ci_high")
+  ci_level <- .arm_num(row, "ci_level")
+  if (is.na(ci_level) || ci_level <= 1 || ci_level >= 100) ci_level <- 95
+  if (!is.na(mean_value) && !is.na(lo) && !is.na(hi) && hi > lo &&
+      !is.na(n) && n >= 2) {
+    z <- stats::qt(1 - (1 - ci_level / 100) / 2, df = n - 1)
+    se <- (hi - lo) / (2 * z)
+    if (is.finite(se) && se > 0) {
+      return(list(
+        mean = mean_value, sd = se * sqrt(n), converted = TRUE,
+        conversion_method = sprintf("SD from %.0f%% CI (Cochrane 6.5.2.2)", ci_level)
+      ))
+    }
+  }
+  if (is.na(.arm_num(row, "median")) || is.na(n)) {
     return(list(mean = NA_real_, sd = NA_real_, converted = FALSE,
                 conversion_method = NA_character_))
   }
   .require_namespace("estmeansd")
   fit <- tryCatch(
     estmeansd::qe.mean.sd(
-      min.val = .as_num(row$min), q1.val = .as_num(row$q1),
-      med.val = .as_num(row$median), q3.val = .as_num(row$q3),
-      max.val = .as_num(row$max), n = .as_num(row$sample)
+      min.val = .arm_num(row, "min"), q1.val = .arm_num(row, "q1"),
+      med.val = .arm_num(row, "median"), q3.val = .arm_num(row, "q3"),
+      max.val = .arm_num(row, "max"), n = n
     ),
     error = function(e) NULL
   )
@@ -3625,6 +3679,10 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   )
 }
 
+.quantile_converted <- function(conversion_method) {
+  !is.na(conversion_method) & grepl("Quantile Estimation", conversion_method, fixed = TRUE)
+}
+
 .source_sensitivity <- function(all_sources, analysis) {
   if (!nrow(all_sources)) return(data.frame())
   types <- unique(all_sources$source_type)
@@ -3637,9 +3695,10 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     if (is.null(fit)) next
     rows[[type]] <- .meta_summary_row(fit, analysis, paste0("Sensitivity: ", type))
   }
-  converted <- all_sources[!all_sources$converted & is.finite(all_sources$TE) &
+  is_quantile <- .quantile_converted(all_sources$conversion_method)
+  converted <- all_sources[!is_quantile & is.finite(all_sources$TE) &
                              is.finite(all_sources$seTE) & all_sources$seTE > 0, , drop = FALSE]
-  if (any(all_sources$converted %in% TRUE) && length(unique(converted$study_id)) >= 2L) {
+  if (any(is_quantile) && length(unique(converted$study_id)) >= 2L) {
     fit <- tryCatch(.fit_metagen(converted, analysis$effect_measure, prediction = nrow(converted) >= 5L),
                     error = function(e) NULL)
     if (!is.null(fit)) rows[["exclude_converted"]] <- .meta_summary_row(
@@ -3921,8 +3980,9 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 }
 
 .single_mean_sensitivity <- function(arms, analysis) {
-  if (!any(arms$converted %in% TRUE)) return(data.frame())
-  dat <- arms[!arms$converted, , drop = FALSE]
+  is_quantile <- .quantile_converted(arms$conversion_method)
+  if (!any(is_quantile)) return(data.frame())
+  dat <- arms[!is_quantile, , drop = FALSE]
   if (length(unique(dat$study_id)) < 2L) return(data.frame())
   fit <- tryCatch(
     meta::metamean(
@@ -4005,6 +4065,10 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     arms$mean <- vapply(estimates, `[[`, numeric(1), "mean")
     arms$sd <- vapply(estimates, `[[`, numeric(1), "sd")
     arms$converted <- vapply(estimates, `[[`, logical(1), "converted")
+    arms$conversion_method <- vapply(estimates, function(x) {
+      val <- x$conversion_method
+      if (is.null(val) || !length(val) || is.na(val)) NA_character_ else as.character(val[[1L]])
+    }, character(1))
     model <- meta::metamean(
       n = arms$sample, mean = arms$mean, sd = arms$sd, studlab = arms$study_label, data = arms,
       sm = "MRAW", common = TRUE, random = TRUE, method.tau = "REML",
@@ -4036,6 +4100,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       study_label = arms$study_label, TE = model$TE, seTE = model$seTE,
       lower = model$lower, upper = model$upper, source_type = "raw_derived",
       mean = arms$mean, sd = arms$sd, sample = arms$sample, converted = arms$converted,
+      conversion_method = arms$conversion_method,
       stringsAsFactors = FALSE
     )
     extra_cols <- grep("^(subgroup_|moderator_)", names(arms), value = TRUE)
@@ -4066,7 +4131,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   } else {
     data.frame()
   }
-  if (analysis$outcome_type == "mean" && any(arms$converted %in% TRUE)) {
+  if (analysis$outcome_type == "mean" && any(.quantile_converted(arms$conversion_method))) {
     method_decisions <- rbind(method_decisions, data.frame(
       analysis_id = analysis$analysis_id, decision = "summary_conversion",
       value = "estmeansd_quantile_estimation",

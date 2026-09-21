@@ -745,3 +745,21 @@ testthat::test_that("all analysis engines run end to end", {
   plot_folders <- unique(basename(dirname(unlist(lapply(result$analyses, `[[`, "plots")))))
   testthat::expect_true(all(grepl("_[0-9a-f]{8}$", plot_folders)))
 })
+
+testthat::test_that("arm-level mean plus CI is converted to SD using t critical value", {
+  n <- 50
+  mean_value <- 7.2
+  se <- 0.15
+  tcrit <- stats::qt(0.975, df = n - 1)
+  row <- data.frame(
+    mean = mean_value, sd = NA_real_, median = NA_real_, sample = n,
+    min = NA_real_, q1 = NA_real_, q3 = NA_real_, max = NA_real_,
+    ci_low = mean_value - tcrit * se, ci_high = mean_value + tcrit * se,
+    ci_level = 95, stringsAsFactors = FALSE
+  )
+  out <- .mean_sd_from_arm(row)
+  testthat::expect_equal(out$mean, mean_value)
+  testthat::expect_equal(out$sd, se * sqrt(n), tolerance = 1e-10)
+  testthat::expect_true(out$converted)
+  testthat::expect_match(out$conversion_method, "CI")
+})
