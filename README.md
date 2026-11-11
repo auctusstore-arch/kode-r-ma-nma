@@ -421,6 +421,8 @@ check_auctus_dependencies()
 - Random-effects, REML, 95% CI, dan Hartung-Knapp dengan safeguard untuk generic inverse-variance.
 - Binary raw non-sparse menggunakan Mantel-Haenszel random-effects.
 - Sparse OR raw-only menggunakan GLMM random-effects dengan sensitivity Mantel-Haenszel.
+- Data binary disebut sparse bila ada sel nol atau semua-event, atau total event kurang dari 20. Event rate yang rendah saja tidak membuat data sparse (sejak 2.3.1; sebelumnya event rate di bawah 5% juga memicu aturan ini).
+- GLMM tidak memberi bobot per studi. Pada run GLMM, forest plot menampilkan kolom `Weight*` berisi bobot inverse-variance perkiraan, `1 / (SE^2 + tau^2)`, dengan catatan kaki. Bobot itu hanya untuk tampilan dan tidak dipakai model. `STUDY_EFFECTS` mencatatnya di `weight_percent` dengan `weight_type` = `model` atau `approximate_iv`, dan `METHOD_DECISIONS` mendapat baris `weight_display`.
 - Sparse RR menggunakan Mantel-Haenszel dan sensitivity continuity correction.
 - Continuous menggunakan MD atau Hedges g sesuai skala.
 - Proportion menggunakan random-effects logit GLMM.
@@ -671,7 +673,7 @@ Output meliputi sesuai kelayakan data:
 - network graph, league table, ranking, inconsistency, dan node splitting;
 - paired sensitivity/specificity forest, SROC, dan Deeks plot.
 
-Header arm dan label `Favours` memakai nama treatment canonical dari workbook, bukan teks `Intervention` atau `Control` yang ditulis tetap. Untuk `lower_better`, sisi effect lebih kecil diberi `Favours <non-reference>` dan sisi sebaliknya `Favours <reference>`. Untuk `higher_better`, kedua arah tersebut dibalik. Untuk `neutral`, label menjadi `Lower effect` dan `Higher effect` tanpa klaim treatment lebih baik.
+Header arm dan label `Favours` memakai nama treatment canonical dari workbook, bukan teks `Intervention` atau `Control` yang ditulis tetap. Untuk `lower_better`, sisi effect lebih kecil diberi `Favours <non-reference>` dan sisi sebaliknya `Favours <reference>`. Untuk `higher_better`, kedua arah tersebut dibalik. Untuk `neutral`, label menyebut kelompok non-reference tanpa klaim treatment lebih baik: `Lower odds in <non-reference>` dan `Higher odds in <non-reference>` untuk OR, `risk` untuk RR, `hazard` untuk HR, serta `Lower in` dan `Higher in` untuk MD dan SMD. Ukuran efek lain tetap `Lower effect` dan `Higher effect`. Pakai `neutral` untuk analisis paparan atau faktor risiko, supaya tidak muncul label seperti `Favours Heart Failure`.
 
 ## 15. Struktur hasil
 

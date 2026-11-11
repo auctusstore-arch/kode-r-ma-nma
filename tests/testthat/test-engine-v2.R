@@ -763,3 +763,90 @@ testthat::test_that("arm-level mean plus CI is converted to SD using t critical 
   testthat::expect_true(out$converted)
   testthat::expect_match(out$conversion_method, "CI")
 })
+
+testthat::test_that("a low event rate alone is not sparse", {
+  # The six studies from the tutor report: 1,752 events in 154,002 participants,
+  # no zero cell. The old 5% event-rate rule sent this to the GLMM.
+  reported <- data.frame(
+    event1 = c(120, 2, 405, 120, 3, 1), sample1 = c(8530, 275, 19027, 16140, 96, 85),
+    event2 = c(215, 4, 607, 270, 4, 1), sample2 = c(25855, 344, 36290, 46840, 204, 316)
+  )
+  rule <- .binary_is_sparse(reported)
+  testthat::expect_false(rule$sparse)
+  testthat::expect_identical(rule$reason, "Non-sparse raw binary data")
+
+  zero_cell <- reported
+  zero_cell$event1[[6L]] <- 0
+  testthat::expect_true(.binary_is_sparse(zero_cell)$sparse)
+  testthat::expect_identical(.binary_is_sparse(zero_cell)$reason, "Zero or all-event cell")
+
+  few <- data.frame(event1 = c(3, 4), sample1 = c(50, 60), event2 = c(5, 6), sample2 = c(50, 60))
+  testthat::expect_true(.binary_is_sparse(few)$sparse)
+  testthat::expect_identical(.binary_is_sparse(few)$reason, "Fewer than 20 events in total")
+})
+
+testthat::test_that("rare but well-counted OR data uses Mantel-Haenszel with model weights", {
+  path <- tempfile(fileext = ".xlsx")
+  make_v2_fixture(path, active = "pairwise")
+  wb <- .read_auctus_workbook(path)
+  wb$arm_data$event <- pmax(suppressWarnings(as.numeric(wb$arm_data$event)), 5)
+  wb$arm_data$sample <- 10000
+  dat <- .normalize_workbook_data(wb)
+  analysis <- analysis_row(dat, .fixture_outcomes[["pairwise"]])
+  out <- .run_pairwise_analysis(dat, analysis, tempfile("or_rare_"))
+  testthat::expect_identical(out$status, "SUCCESS")
+  decision <- out$method_decisions
+  testthat::expect_identical(decision$value[decision$decision == "binary_method"], "MH")
+  testthat::expect_false("weight_display" %in% decision$decision)
+  testthat::expect_true(all(is.finite(out$canonical$weight_percent)))
+  testthat::expect_equal(sum(out$canonical$weight_percent), 100)
+  testthat::expect_true(all(out$canonical$weight_type == "model"))
+})
+
+testthat::test_that("a GLMM run shows approximate weights and says so", {
+  path <- tempfile(fileext = ".xlsx")
+  make_v2_fixture(path, active = "pairwise")
+  validation <- validate_auctus_data(path, output_dir = tempfile("validate_"))
+  dat <- .normalize_workbook_data(validation$workbook)
+  analysis <- analysis_row(dat, .fixture_outcomes[["pairwise"]])
+  out_dir <- tempfile("or_glmm_")
+  out <- .run_pairwise_analysis(dat, analysis, out_dir)
+  testthat::expect_identical(out$status, "SUCCESS")
+  decision <- out$method_decisions
+  testthat::expect_identical(decision$value[decision$decision == "binary_method"], "GLMM")
+  testthat::expect_identical(decision$value[decision$decision == "weight_display"], "approximate_iv")
+  testthat::expect_false(.model_has_random_weights(out$model))
+  testthat::expect_true(all(is.finite(out$canonical$weight_percent)))
+  testthat::expect_equal(sum(out$canonical$weight_percent), 100)
+  testthat::expect_true(all(out$canonical$weight_type == "approximate_iv"))
+  testthat::expect_true(any(grepl("forest_overall\\.png$", out$plots)))
+})
+
+testthat::test_that("missing weights are never replaced by equal weights", {
+  no_weights <- list(TE = c(0.1, 0.2, 0.3), seTE = c(0.1, 0.2, 0.4), w.random = rep(NA_real_, 3), tau2 = 0)
+  info <- .study_weight_info(no_weights)
+  testthat::expect_identical(info$type, "approximate_iv")
+  testthat::expect_equal(sum(info$percent), 100)
+  testthat::expect_gt(info$percent[[1L]], info$percent[[3L]])
+  no_se <- list(TE = c(0.1, 0.2), seTE = c(NA_real_, 0.2), w.random = c(NA_real_, NA_real_), tau2 = 0)
+  testthat::expect_identical(.study_weight_info(no_se)$type, "unavailable")
+  testthat::expect_true(all(is.na(.random_weight_percent(no_se, 2L))))
+})
+
+testthat::test_that("neutral direction names the group instead of Favours", {
+  labels <- function(measure, direction) {
+    .forest_favour_labels(list(effect_measure = measure, outcome_direction = direction),
+                          "Heart Failure", "No Heart Failure")
+  }
+  testthat::expect_identical(labels("OR", "neutral"),
+    list(left = "Lower odds in Heart Failure", right = "Higher odds in Heart Failure"))
+  testthat::expect_identical(labels("RR", "neutral")$left, "Lower risk in Heart Failure")
+  testthat::expect_identical(labels("HR", "neutral")$right, "Higher hazard in Heart Failure")
+  testthat::expect_identical(labels("MD", "neutral"),
+    list(left = "Lower in Heart Failure", right = "Higher in Heart Failure"))
+  testthat::expect_identical(labels("ROM", "neutral"), list(left = "Lower effect", right = "Higher effect"))
+  testthat::expect_identical(labels("OR", "lower_better"),
+    list(left = "Favours Heart Failure", right = "Favours No Heart Failure"))
+  testthat::expect_identical(labels("OR", "higher_better"),
+    list(left = "Favours No Heart Failure", right = "Favours Heart Failure"))
+})

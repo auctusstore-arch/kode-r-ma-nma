@@ -16,7 +16,7 @@
 
 local({
 
-  .AUCTUS_ENGINE_VERSION <- "2.3.0"
+  .AUCTUS_ENGINE_VERSION <- "2.3.1"
 .AUCTUS_SCHEMA_VERSION <- "2.3"
 
 .auctus_packages <- c(
@@ -2781,12 +2781,65 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
          .format_number(high, digits), "]")
 }
 
-.random_weight_percent <- function(model, n) {
-  weights <- suppressWarnings(as.numeric(model$w.random %||% numeric()))
-  if (length(weights) != n || any(!is.finite(weights)) || sum(weights) <= 0) {
-    weights <- rep(1, n)
+# Inverse-variance random-effects weights, in percent. This is what a
+# generic inverse-variance model would use. Returns NA when any standard error
+# is missing, so a caller never shows a weight that was not computed.
+.approximate_iv_weight_percent <- function(seTE, tau2 = 0) {
+  seTE <- suppressWarnings(as.numeric(seTE))
+  tau2 <- suppressWarnings(as.numeric(tau2 %||% 0))
+  tau2 <- if (length(tau2) && is.finite(tau2[[1L]]) && tau2[[1L]] >= 0) tau2[[1L]] else 0
+  weights <- 1 / (seTE^2 + tau2)
+  if (!length(weights) || any(!is.finite(weights)) || sum(weights) <= 0) {
+    return(rep(NA_real_, length(seTE)))
   }
   100 * weights / sum(weights)
+}
+
+.model_has_random_weights <- function(model, n = length(model$TE)) {
+  weights <- suppressWarnings(as.numeric(model$w.random %||% numeric()))
+  length(weights) == n && n > 0L && all(is.finite(weights)) && sum(weights) > 0
+}
+
+# Study weights of a fitted model, in percent. A GLMM has no study weights
+# (meta leaves w.random empty), so those fall back to approximate
+# inverse-variance weights and are labelled as such. Never equal weights.
+.study_weight_info <- function(model, n = length(model$TE)) {
+  if (.model_has_random_weights(model, n)) {
+    weights <- as.numeric(model$w.random)
+    return(list(percent = 100 * weights / sum(weights), type = "model"))
+  }
+  seTE <- suppressWarnings(as.numeric(model$seTE %||% numeric()))
+  if (length(seTE) != n) return(list(percent = rep(NA_real_, n), type = "unavailable"))
+  percent <- .approximate_iv_weight_percent(seTE, model$tau2)
+  list(percent = percent, type = if (all(is.finite(percent))) "approximate_iv" else "unavailable")
+}
+
+.random_weight_percent <- function(model, n) {
+  .study_weight_info(model, n)$percent
+}
+
+.GLMM_WEIGHT_FOOTNOTE <- paste(
+  "* Approximate inverse-variance weights.",
+  "The GLMM does not assign study weights."
+)
+
+# Sparse binary data: a zero or all-event cell, or fewer than 20 events in
+# total. A low event rate alone is not sparse: 1,700 events in 150,000
+# participants is plenty for Mantel-Haenszel.
+.binary_is_sparse <- function(raw_dat) {
+  zero_cell <- any(raw_dat$event1 == 0 | raw_dat$event2 == 0 |
+                     raw_dat$event1 == raw_dat$sample1 | raw_dat$event2 == raw_dat$sample2)
+  few_events <- sum(raw_dat$event1 + raw_dat$event2) < 20
+  reason <- if (zero_cell && few_events) {
+    "Zero or all-event cell, and fewer than 20 events in total"
+  } else if (zero_cell) {
+    "Zero or all-event cell"
+  } else if (few_events) {
+    "Fewer than 20 events in total"
+  } else {
+    "Non-sparse raw binary data"
+  }
+  list(sparse = zero_cell || few_events, reason = reason)
 }
 
 .forest_favour_label <- function(analysis, treat1, treat2) {
@@ -2802,7 +2855,18 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 .forest_favour_labels <- function(analysis, treat1, treat2) {
   direction <- analysis$outcome_direction %||% "neutral"
   if (is.na(direction) || direction == "neutral") {
-    return(list(left = "Lower effect", right = "Higher effect"))
+    # Neutral is the setting for an exposure or risk factor, where "Favours"
+    # reads wrong. Say which group the side refers to instead.
+    quantity <- switch(
+      toupper(.trim_chr(analysis$effect_measure %||% "")),
+      OR = "odds", RR = "risk", HR = "hazard", MD = "", SMD = "", NULL
+    )
+    group <- .trim_chr(treat1 %||% "")
+    if (is.null(quantity) || is.na(group) || !nzchar(group)) {
+      return(list(left = "Lower effect", right = "Higher effect"))
+    }
+    middle <- if (nzchar(quantity)) paste0(" ", quantity, " in ") else " in "
+    return(list(left = paste0("Lower", middle, group), right = paste0("Higher", middle, group)))
   }
   if (direction == "lower_better") {
     list(left = paste("Favours", treat1), right = paste("Favours", treat2))
@@ -3030,6 +3094,18 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     8.5
   }
   if (!is.null(subgroup_name)) display_model$subgroup.name <- subgroup_name
+  weight_label <- "Weight"
+  weight_footnote <- NULL
+  if (!.model_has_random_weights(display_model)) {
+    approximate <- .approximate_iv_weight_percent(display_model$seTE, display_model$tau2)
+    if (length(approximate) && all(is.finite(approximate))) {
+      display_model$data$.weight_display <- paste0(.format_number(approximate, 1), "%")
+      display_model$w.random <- approximate
+      weight_label <- "Weight*"
+      weight_footnote <- .GLMM_WEIGHT_FOOTNOTE
+      dims$height <- dims$height + 0.35
+    }
+  }
   prediction_available <- isTRUE(nrow(canonical) >= 5L) &&
     any(is.finite(c(display_model$lower.predict, display_model$upper.predict)))
   forest_args <- list(
@@ -3049,8 +3125,8 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     label.c = treat2,
     label.e.attach = atomic$label_e_attach,
     label.c.attach = atomic$label_c_attach,
-    rightcols = c("effect", "ci", "w.random"),
-    rightlabs = c(analysis$effect_measure, "95% CI", "Weight"),
+    rightcols = c("effect", "ci", if (is.null(weight_footnote)) "w.random" else ".weight_display"),
+    rightlabs = c(analysis$effect_measure, "95% CI", weight_label),
     label.left = favour$left,
     label.right = favour$right,
     lab.NA = "NR",
@@ -3108,6 +3184,13 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       title, x = grid::unit(0.5, "npc"), y = grid::unit(0.985, "npc"),
       gp = grid::gpar(fontfamily = "sans", fontsize = 12, fontface = "bold")
     )
+    if (!is.null(weight_footnote)) {
+      grid::grid.text(
+        weight_footnote, x = grid::unit(0.02, "npc"), y = grid::unit(0.02, "npc"),
+        just = c("left", "bottom"),
+        gp = grid::gpar(fontfamily = "sans", fontsize = 7.5, col = "grey25")
+      )
+    }
   }
   base <- file.path(output_dir, basename)
   .write_plot_pair(draw, paste0(base, ".png"), paste0(base, ".pdf"),
@@ -3512,8 +3595,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   est <- .natural_effect(canonical$TE, sm)
   lo <- .natural_effect(canonical$lower, sm)
   hi <- .natural_effect(canonical$upper, sm)
-  weights <- 1 / (canonical$seTE^2 + (tau2 %||% 0))
-  weights <- 100 * weights / sum(weights)
+  weights <- .approximate_iv_weight_percent(canonical$seTE, tau2)
   raw_binary <- !is.na(canonical$event1)
   raw_cont <- !is.na(canonical$mean1)
   data1 <- ifelse(
@@ -3769,10 +3851,8 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     meta_a <- data$study_metadata[, c("study_id", "study_label"), drop = FALSE]
     raw_dat <- merge(raw_dat, meta_a, by = "study_id", all.x = TRUE, sort = FALSE)
     raw_dat$study_label[is.na(raw_dat$study_label)] <- raw_dat$study_id[is.na(raw_dat$study_label)]
-    sparse <- any(raw_dat$event1 == 0 | raw_dat$event2 == 0 |
-                    raw_dat$event1 == raw_dat$sample1 | raw_dat$event2 == raw_dat$sample2) ||
-      sum(raw_dat$event1 + raw_dat$event2) < 20 ||
-      sum(raw_dat$event1 + raw_dat$event2) / sum(raw_dat$sample1 + raw_dat$sample2) < 0.05
+    sparse_rule <- .binary_is_sparse(raw_dat)
+    sparse <- sparse_rule$sparse
     method <- if (sparse && analysis$effect_measure == "OR") "GLMM" else "MH"
     method_name <- if (method == "GLMM") {
       "Sparse OR: GLMM random-effects"
@@ -3805,7 +3885,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     }
     method_decisions <- data.frame(
       analysis_id = analysis$analysis_id, decision = "binary_method",
-      value = method, reason = if (sparse) "Sparse-event rule triggered" else "Non-sparse raw binary data",
+      value = method, reason = sparse_rule$reason,
       stringsAsFactors = FALSE
     )
     binary_sensitivity <- .binary_raw_sensitivity(raw_dat, analysis, method, sparse)
@@ -3816,6 +3896,29 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       value = "metagen_REML_HK", reason = if (raw_only) "Continuous canonical effects" else "Reported or mixed effect sources",
       stringsAsFactors = FALSE
     )
+  }
+
+  # Study weights go into STUDY_EFFECTS with their provenance, so a reader of
+  # results.xlsx sees the same numbers as the forest plot and knows which
+  # ones the model did not use.
+  weight_info <- .study_weight_info(model)
+  weight_index <- match(.normalize_label_key(canonical$study_label),
+                        .normalize_label_key(model$studlab))
+  if (anyNA(weight_index) && length(model$TE) == nrow(canonical)) {
+    weight_index <- seq_len(nrow(canonical))
+  }
+  canonical$weight_percent <- weight_info$percent[weight_index]
+  canonical$weight_type <- ifelse(is.na(canonical$weight_percent), "unavailable", weight_info$type)
+  if (identical(weight_info$type, "approximate_iv")) {
+    method_decisions <- .rbind_fill(list(
+      method_decisions,
+      data.frame(
+        analysis_id = analysis$analysis_id, decision = "weight_display",
+        value = "approximate_iv",
+        reason = "The GLMM does not assign study weights; inverse-variance weights are shown for display only.",
+        stringsAsFactors = FALSE
+      )
+    ))
   }
 
   summary <- .meta_summary_row(model, analysis, method_name)
