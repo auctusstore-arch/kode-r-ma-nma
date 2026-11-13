@@ -850,3 +850,64 @@ testthat::test_that("neutral direction names the group instead of Favours", {
   testthat::expect_identical(labels("OR", "higher_better"),
     list(left = "Favours No Heart Failure", right = "Favours Heart Failure"))
 })
+
+testthat::test_that("pooled results report participants only when every study has a sample size", {
+  path <- tempfile(fileext = ".xlsx")
+  make_v2_fixture(path, active = c("pairwise", "continuous", "proportion"))
+  result <- run_auctus_meta(path, output_dir = tempfile("participants_"), run_mode = "strict")
+
+  # PB4 is double-zero and leaves the model, so only PB1-PB3 count.
+  pairwise <- result$analyses[[.fixture_outcomes[["pairwise"]]]]$summary
+  testthat::expect_equal(pairwise$k, 3L)
+  testthat::expect_equal(pairwise$participants, 600)
+  testthat::expect_equal(pairwise$participants_treatment, 300)
+  testthat::expect_equal(pairwise$participants_reference, 300)
+  testthat::expect_identical(pairwise$k_participants_missing, 0L)
+
+  continuous <- result$analyses[[.fixture_outcomes[["continuous"]]]]$summary
+  testthat::expect_equal(continuous$participants_treatment, 320)
+  testthat::expect_equal(continuous$participants_reference, 328)
+
+  proportion <- result$analyses[[.fixture_outcomes[["proportion"]]]]$summary
+  testthat::expect_equal(proportion$participants, 460)
+  testthat::expect_true(is.na(proportion$participants_treatment))
+
+  pooled <- readxl::read_excel(result$files$results_workbook, sheet = "ANALYSIS_RESULTS")
+  testthat::expect_true(all(c("participants", "participants_treatment", "participants_reference",
+                              "k_participants_missing") %in% names(pooled)))
+  markdown_text <- paste(readLines(result$files$report_markdown, warn = FALSE), collapse = "\n")
+  testthat::expect_match(markdown_text, "participants_treatment")
+})
+
+testthat::test_that("a missing sample size blanks the participant total instead of summing part of it", {
+  path <- tempfile(fileext = ".xlsx")
+  make_v2_fixture(path, active = "pairwise")
+  dat <- .normalize_workbook_data(.read_auctus_workbook(path))
+  analysis <- analysis_row(dat, .fixture_outcomes[["pairwise"]])
+  additions <- data.frame(
+    analysis_id = analysis$analysis_id,
+    study_id = c(study_internal_id(dat, "PB1"), study_internal_id(dat, "PB2")),
+    outcome_name = .fixture_outcomes[["pairwise"]],
+    study_label = c("PB1", "PB2"),
+    treat1 = c("Treatment A", "Placebo"), treat2 = c("Placebo", "Treatment A"),
+    effect = c(0.50, 1.40), ci_low = c(0.30, 0.70), ci_high = c(0.80, 2.80),
+    se = NA_real_, ci_level = 95,
+    estimate_type = "adjusted",
+    adjustment_variables = "age",
+    sample1 = c(100, 90), sample2 = c(NA, 110), notes = "Reported model",
+    source_sheet = "effect_data", source_row = 2:3,
+    stringsAsFactors = FALSE
+  )
+  dat$effect_data <- .rbind_fill(list(dat$effect_data, additions))
+  output <- .run_pairwise_analysis(dat, analysis, tempfile("participants_partial_"))
+  testthat::expect_true(is.na(output$summary$participants))
+  testthat::expect_true(is.na(output$summary$participants_treatment))
+  testthat::expect_identical(output$summary$k_participants_missing, 1L)
+
+  # With the gap filled, the reversed PB2 contrast must count 90 as reference.
+  dat$effect_data$sample2[dat$effect_data$study_label == "PB1" & !is.na(dat$effect_data$effect)] <- 100
+  complete <- .run_pairwise_analysis(dat, analysis, tempfile("participants_complete_"))
+  testthat::expect_identical(complete$summary$k_participants_missing, 0L)
+  testthat::expect_equal(complete$summary$participants_reference, 100 + 90 + 100)
+  testthat::expect_equal(complete$summary$participants_treatment, 100 + 110 + 100)
+})
