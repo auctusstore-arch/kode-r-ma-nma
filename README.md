@@ -708,6 +708,14 @@ hasil$analyses[["Mortality at 30 days"]]
 
 `report.md` mengikuti struktur laporan engine lama dalam format Markdown yang lebih mudah direvisi. Isinya mencakup konfigurasi analisis, overall result, sensitivity analysis, subgroup klinis, source subgroup, meta-regression, leave-one-out, publication bias, hasil khusus NMA, keputusan metode, seluruh plot PNG, dan diagnostics. Link plot bersifat relatif sehingga folder hasil dapat dipindahkan sebagai satu paket.
 
+Sheet `ANALYSIS_RESULTS` di `results.xlsx` dan tabel `Overall result` di report memuat jumlah peserta untuk pairwise dan single-arm:
+
+- `participants`: total peserta dari semua studi yang masuk model utama. Studi yang dikeluarkan, misalnya double-zero, tidak dihitung;
+- `participants_treatment` dan `participants_reference`: jumlah peserta per kelompok untuk pairwise, mengikuti orientasi terhadap `reference_treatment`. Kosong untuk single-arm;
+- `k_participants_missing`: jumlah studi di model yang tidak mempunyai sample size, misalnya reported effect tanpa `sample1` atau `sample2`.
+
+Total hanya diisi bila semua studi di model mempunyai sample size. Bila ada yang kosong, ketiga kolom total dibiarkan kosong dan `k_participants_missing` menunjukkan jumlah studinya. Total tidak dibuat dari penjumlahan parsial. NMA memakai kolom `participants` per treatment seperti sebelumnya.
+
 `results.xlsx` mempunyai sheet `SOURCE_SUBGROUP` untuk ringkasan adjusted, crude, dan raw-derived pada outcome reported atau mixed. Mode forest `raw_atomic` atau `reported_total_only` dicatat pada `METHOD_DECISIONS` dan `manifest.json`.
 
 Jika `output_dir` tidak diisi, satu kali pemanggilan `run_auctus_meta()` membuat satu folder run dengan timestamp:

@@ -16,7 +16,7 @@
 
 local({
 
-  .AUCTUS_ENGINE_VERSION <- "2.3.1"
+  .AUCTUS_ENGINE_VERSION <- "2.3.2"
 .AUCTUS_SCHEMA_VERSION <- "2.3"
 
 .auctus_packages <- c(
@@ -2768,6 +2768,37 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
 
 .inverse_logit <- function(x) stats::plogis(x)
 
+# Participants behind one pooled estimate. A total is given only when every
+# study in the model reports its sample size; otherwise the totals stay NA and
+# k_participants_missing says how many studies lack one. Partial sums are never
+# shown, which is the same rule the reported/mixed forest plot follows.
+.pooled_participants <- function(n_treatment, n_reference = NULL) {
+  n_treatment <- suppressWarnings(as.numeric(n_treatment))
+  single_arm <- is.null(n_reference)
+  if (single_arm) n_reference <- rep(0, length(n_treatment))
+  n_reference <- suppressWarnings(as.numeric(n_reference))
+  missing <- is.na(n_treatment) | is.na(n_reference)
+  complete <- length(n_treatment) > 0L && !any(missing)
+  data.frame(
+    participants = if (complete) sum(n_treatment + n_reference) else NA_real_,
+    participants_treatment = if (complete && !single_arm) sum(n_treatment) else NA_real_,
+    participants_reference = if (complete && !single_arm) sum(n_reference) else NA_real_,
+    k_participants_missing = as.integer(sum(missing)),
+    stringsAsFactors = FALSE
+  )
+}
+
+.pairwise_participants <- function(canonical, model, reference_treatment) {
+  in_model <- .normalize_label_key(canonical$study_label) %in% .normalize_label_key(model$studlab)
+  rows <- canonical[in_model, , drop = FALSE]
+  rows <- rows[!duplicated(rows$study_id), , drop = FALSE]
+  reference_first <- .normalize_label_key(rows$treat1) %in% .normalize_label_key(reference_treatment)
+  .pooled_participants(
+    n_treatment = ifelse(reference_first, rows$sample2, rows$sample1),
+    n_reference = ifelse(reference_first, rows$sample1, rows$sample2)
+  )
+}
+
 .ratio_measure <- function(sm) sm %in% c("OR", "RR", "HR")
 
 .natural_effect <- function(x, sm) if (.ratio_measure(sm)) exp(x) else x
@@ -3922,6 +3953,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   }
 
   summary <- .meta_summary_row(model, analysis, method_name)
+  summary <- cbind(summary, .pairwise_participants(canonical, model, analysis$reference_treatment))
   source_subgroup <- .run_source_subgroups(canonical, analysis)
   forest_model <- if (!is.null(source_subgroup$model)) source_subgroup$model else model
   forest_subgroup_name <- if (source_subgroup$forest_mode == "reported_total_only") {
@@ -4125,6 +4157,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       prediction = nrow(arms) >= 5L
     )
     summary <- .meta_summary_row(model, analysis, "Logit GLMM random-effects", stats::plogis)
+    summary <- cbind(summary, .pooled_participants(arms$sample))
     summary$effect_measure <- "PROPORTION"
     est <- stats::plogis(model$TE)
     lo <- stats::plogis(model$lower)
@@ -4178,6 +4211,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
       method.random.ci = "HK", adhoc.hakn.ci = "se", prediction = nrow(arms) >= 5L
     )
     summary <- .meta_summary_row(model, analysis, "Single mean random-effects (REML, Hartung-Knapp)", identity)
+    summary <- cbind(summary, .pooled_participants(arms$sample))
     summary$effect_measure <- "MEAN"
     random_weights <- .random_weight_percent(model, nrow(arms))
     plot_data <- data.frame(
