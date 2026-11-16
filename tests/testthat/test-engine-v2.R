@@ -911,3 +911,18 @@ testthat::test_that("a missing sample size blanks the participant total instead 
   testthat::expect_equal(complete$summary$participants_reference, 100 + 90 + 100)
   testthat::expect_equal(complete$summary$participants_treatment, 100 + 110 + 100)
 })
+
+testthat::test_that("diagnostic SROC plot is written with legend inputs finite", {
+  path <- tempfile(fileext = ".xlsx")
+  make_v2_fixture(path, active = "diagnostic")
+  output <- tempfile("sroc_")
+  result <- run_auctus_meta(path, output_dir = output, run_mode = "strict")
+  files <- list.files(output, pattern = "^sroc\\.(png|pdf)$", recursive = TRUE)
+  testthat::expect_equal(sort(basename(files)), c("sroc.pdf", "sroc.png"))
+  dat <- data.frame(TP = c(82, 74, 91, 68, 85, 77), FN = c(18, 16, 9, 22, 15, 13),
+                    FP = c(12, 9, 17, 11, 13, 8), TN = c(188, 201, 173, 189, 187, 202))
+  model <- mada::reitsma(dat)
+  testthat::expect_true(is.finite(as.numeric(mada::AUC(model)$AUC)[[1L]]))
+  beta <- as.numeric(model$coefficients)
+  testthat::expect_true(is.finite(exp(beta[[1L]] - beta[[2L]])))
+})
