@@ -16,7 +16,7 @@
 
 local({
 
-  .AUCTUS_ENGINE_VERSION <- "2.3.2"
+  .AUCTUS_ENGINE_VERSION <- "2.3.3"
 .AUCTUS_SCHEMA_VERSION <- "2.3"
 
 .auctus_packages <- c(
@@ -4446,7 +4446,28 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     "Specificity", data1_header = "TN / Non-diseased", data2_header = "", x_label = "Specificity", null = 0
   )
   base <- file.path(output_dir, "sroc")
-  draw_sroc <- function() plot(model, sroclwd = 2, main = paste("SROC:", analysis$outcome_name))
+  auc_val <- tryCatch(as.numeric(mada::AUC(model)$AUC)[[1L]], error = function(e) NA_real_)
+  dor_val <- exp(beta[[1L]] - beta[[2L]])
+  # Study points: 0.5 continuity correction only for rows with a zero cell.
+  has_zero <- pmin(dat$tp, dat$fp, dat$fn, dat$tn) == 0
+  cc <- ifelse(has_zero, 0.5, 0)
+  study_sens <- (dat$tp + cc) / (dat$tp + dat$fn + 2 * cc)
+  study_fpr <- (dat$fp + cc) / (dat$fp + dat$tn + 2 * cc)
+  .fmt_stat <- function(x) if (length(x) == 1L && is.finite(x)) sprintf("%.3f", x) else "NA"
+  draw_sroc <- function() {
+    plot(model, sroclwd = 3, xlim = c(0, 1), ylim = c(0, 1),
+         main = paste("SROC:", analysis$outcome_name))
+    graphics::points(study_fpr, study_sens, pch = 16)
+    graphics::legend("bottomleft", legend = c("SROC", "95% CI region"),
+                     lwd = c(3, 1), lty = 1, bty = "n")
+    graphics::legend("bottomright",
+                     legend = c("Individual studies",
+                                paste("AUC =", .fmt_stat(auc_val)),
+                                paste("DOR =", .fmt_stat(dor_val)),
+                                paste("Sensitivity =", .fmt_stat(pooled_sens[[1L]])),
+                                paste("Specificity =", .fmt_stat(pooled_spec[[1L]]))),
+                     pch = c(16, NA, NA, NA, NA), bty = "n")
+  }
   grDevices::png(paste0(base, ".png"), width = 1800, height = 1600, res = 250)
   draw_sroc(); grDevices::dev.off()
   grDevices::pdf(paste0(base, ".pdf"), width = 7.5, height = 7)
