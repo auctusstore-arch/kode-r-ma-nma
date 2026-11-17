@@ -16,7 +16,7 @@
 
 local({
 
-  .AUCTUS_ENGINE_VERSION <- "2.3.3"
+  .AUCTUS_ENGINE_VERSION <- "2.3.4"
 .AUCTUS_SCHEMA_VERSION <- "2.3"
 
 .auctus_packages <- c(
@@ -3717,7 +3717,11 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     dat <- canonical[keep, , drop = FALSE]
     x_use <- x[keep]
     fit <- tryCatch(
-      metafor::rma(yi = dat$TE, sei = dat$seTE, mods = ~ x_use, method = "REML", slab = dat$study_label),
+      # Knapp-Hartung (test = "knha"): t/F tests instead of Wald z. The Wald test
+      # does not hold its type I error rate in meta-regression, mostly with few
+      # studies (Viechtbauer et al. 2015; Higgins and Thompson 2004).
+      metafor::rma(yi = dat$TE, sei = dat$seTE, mods = ~ x_use, method = "REML",
+                   test = "knha", slab = dat$study_label),
       error = function(e) NULL
     )
     if (is.null(fit)) next
@@ -3741,6 +3745,22 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   list(
     tables = if (length(tables)) do.call(rbind, tables) else data.frame(),
     models = models, plots = plots
+  )
+}
+
+# One METHOD_DECISIONS row when a meta-regression table was produced.
+.meta_regression_decision <- function(analysis, metareg) {
+  tables <- metareg$tables
+  if (!is.data.frame(tables) || nrow(tables) == 0L) return(data.frame())
+  data.frame(
+    analysis_id = analysis$analysis_id,
+    decision = "meta_regression_test",
+    value = "knha",
+    reason = paste(
+      "Knapp-Hartung adjusted t and F tests (REML) replace the Wald z test, which inflates the type I error.",
+      "Each moderator is fitted separately; interpret the results as exploratory."
+    ),
+    stringsAsFactors = FALSE
   )
 }
 
@@ -3970,6 +3990,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
   )
   subgroup <- .run_subgroups(canonical, analysis, output_dir)
   metareg <- .run_meta_regression(canonical, analysis, output_dir)
+  method_decisions <- .rbind_fill(list(method_decisions, .meta_regression_decision(analysis, metareg)))
   loo <- .run_loo(canonical, analysis, output_dir)
   funnel <- .run_funnel(canonical, analysis, output_dir)
   sensitivity <- .rbind_fill(list(
@@ -4262,6 +4283,7 @@ convert_legacy_workbook <- function(file_path = file.choose(), output_path = NUL
     .run_proportion_loo(arms, analysis, output_dir, model)
   }
   metareg <- .run_meta_regression(canonical, analysis_for_effects, output_dir)
+  method_decisions <- .rbind_fill(list(method_decisions, .meta_regression_decision(analysis, metareg)))
   funnel <- .run_funnel(canonical, analysis_for_effects, output_dir)
   sensitivity <- if (analysis$outcome_type == "mean") {
     .single_mean_sensitivity(arms, analysis)
