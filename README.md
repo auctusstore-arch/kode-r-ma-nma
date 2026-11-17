@@ -249,6 +249,8 @@ Kolom tambahan yang dikenali:
 
 Meta-regression membutuhkan minimal 10 studi per parameter. Subgroup membutuhkan minimal dua subgroup dengan minimal dua studi per subgroup.
 
+Sejak engine 2.3.4, meta-regression memakai penyesuaian Knapp-Hartung (uji t dan F, `metafor::rma(test = "knha")`) dan bukan uji Wald z, yang menaikkan Type I error. Setiap moderator dipasang terpisah, jadi semakin banyak moderator yang diperiksa semakin besar peluang temuan palsu (Cochrane Handbook bagian 10.11.5.3). Tafsirkan hasilnya sebagai eksploratori, dan tentukan moderator sebelum melihat data.
+
 ## 6. Mengisi `arm_data`
 
 Setiap baris adalah satu arm. Pilih `outcome_name` dan `study_label` dari dropdown.
@@ -564,7 +566,7 @@ Subgroup analysis was performed only when at least two subgroups were available 
 ```
 
 ```text
-Random-effects meta-regression was performed for [MODERATOR] using restricted maximum likelihood only when at least ten studies were available per model parameter. For numerical moderators, results were displayed in a bubble plot with bubble size reflecting study precision. Meta-regression findings were interpreted as observational and exploratory.
+Random-effects meta-regression was performed for [MODERATOR] using restricted maximum likelihood with the Knapp-Hartung adjustment (t and F tests), only when at least ten studies were available per model parameter. For numerical moderators, results were displayed in a bubble plot with bubble size reflecting study precision. Meta-regression findings were interpreted as observational and exploratory.
 ```
 
 ```text

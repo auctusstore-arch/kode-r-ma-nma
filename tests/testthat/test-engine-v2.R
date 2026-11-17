@@ -462,6 +462,43 @@ testthat::test_that("numeric moderator with ten studies creates a bubble plot", 
   testthat::expect_true(all(file.exists(out$plots)))
 })
 
+testthat::test_that("meta-regression uses the Knapp-Hartung test, not Wald z, and records the decision", {
+  # Twelve RR studies (treatment events and n, control events and n) with a dose moderator.
+  a <- c(7, 36, 25, 31, 17, 9, 9, 19, 26, 12, 14, 30)
+  n1 <- c(93, 243, 212, 203, 172, 96, 119, 177, 199, 121, 144, 222)
+  cc <- c(12, 48, 35, 60, 43, 16, 11, 37, 41, 6, 22, 43)
+  n2 <- n1
+  canonical <- data.frame(
+    analysis_id = "kh", study_id = paste0("kh", 1:12), study_label = paste("KH study", 1:12),
+    TE = log((a / n1) / (cc / n2)), seTE = sqrt(1 / a - 1 / n1 + 1 / cc - 1 / n2),
+    moderator_num_dose = 10 + (0:11) * 5, stringsAsFactors = FALSE
+  )
+  analysis <- list(analysis_id = "kh", outcome_name = "Mortality", effect_measure = "RR")
+  out <- .run_meta_regression(canonical, analysis, tempfile("kh_plots_"))
+
+  knha <- metafor::rma(yi = canonical$TE, sei = canonical$seTE, mods = ~ canonical$moderator_num_dose,
+                       method = "REML", test = "knha")
+  wald <- metafor::rma(yi = canonical$TE, sei = canonical$seTE, mods = ~ canonical$moderator_num_dose,
+                       method = "REML", test = "z")
+  slope <- out$tables[out$tables$term == "x_use", ]
+  testthat::expect_equal(nrow(slope), 1L)
+  testthat::expect_equal(slope$estimate, as.numeric(knha$beta[2]), tolerance = 1e-8)
+  testthat::expect_equal(slope$p_value, as.numeric(knha$pval[2]), tolerance = 1e-8)
+  testthat::expect_equal(slope$ci_low, as.numeric(knha$ci.lb[2]), tolerance = 1e-8)
+  testthat::expect_equal(slope$ci_high, as.numeric(knha$ci.ub[2]), tolerance = 1e-8)
+  testthat::expect_equal(slope$moderator_test_p, as.numeric(knha$QMp), tolerance = 1e-8)
+  # The adjusted interval is wider than the Wald interval for this data set.
+  testthat::expect_gt(slope$ci_high - slope$ci_low, as.numeric(wald$ci.ub[2] - wald$ci.lb[2]))
+
+  decision <- .meta_regression_decision(analysis, out)
+  testthat::expect_equal(nrow(decision), 1L)
+  testthat::expect_equal(decision$decision, "meta_regression_test")
+  testthat::expect_equal(decision$value, "knha")
+  # No meta-regression table, no decision row (fewer than ten studies).
+  few <- .run_meta_regression(canonical[1:9, ], analysis, tempfile("kh_few_"))
+  testthat::expect_equal(nrow(.meta_regression_decision(analysis, few)), 0L)
+})
+
 testthat::test_that("validation points to the exact invalid cell", {
   path <- tempfile(fileext = ".xlsx")
   make_v2_fixture(path, active = "pairwise")
